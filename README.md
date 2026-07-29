@@ -30,6 +30,7 @@ A desktop application that allows users to load 2–3 songs and creatively mash 
 ![Main Interface](Prieview1.png)
 
 ![Mixer Controls](Preview3.png)
+
 ---
 
 ## Tech Stack
@@ -45,6 +46,7 @@ A desktop application that allows users to load 2–3 songs and creatively mash 
 ## Installation
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/codewithpb11/neon-mashup-studio.git
 cd neon-mashup-studio
@@ -54,12 +56,11 @@ Install dependencies:
 Bashpip install -r requirements.txt
 
 Make sure FFmpeg is installed and added to your system PATH.
-
 Run the application:
 
 Bashpython app_gui.py
 
-How to Use:
+How to Use
 
 Click + Song 1, + Song 2 (and optionally + Song 3) to load tracks.
 Adjust the sliders for Vocals, Beats, Bass, Pitch, Reverb, Speed, and EQ.
@@ -69,12 +70,12 @@ Click Render Remix to generate the final output.
 Save your favorite settings using Save Preset.
 
 
-Disclaimer:
+Disclaimer
 This tool is created for educational and creative purposes only.
 Please only use audio files that you own or have proper rights to use.
 The developer is not responsible for any copyright violations by users.
 
-Future Plans:
+Future Plans
 
 Real waveform extraction from audio files
 Better AI stem separation integration
