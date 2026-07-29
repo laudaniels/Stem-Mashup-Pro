@@ -27,9 +27,9 @@ A desktop application that allows users to load 2–3 songs and creatively mash 
 
 ## Screenshots
 
-![Main Interface](screenshots/main.png)
+![Main Interface](Prieview1.png)
 
-![Mixer Controls](screenshots/mixer.png)
+![Mixer Controls](Preview3.png)
 ---
 
 ## Tech Stack
