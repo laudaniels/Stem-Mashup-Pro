@@ -22,6 +22,7 @@ A desktop application that allows users to load 2–3 songs and creatively mash 
 - Progress bar during rendering
 - Dark Bluish-Neon modern UI
 - Basic waveform visualization
+- Stem Separator
 
 ---
 
