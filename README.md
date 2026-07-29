@@ -77,10 +77,9 @@ The developer is not responsible for any copyright violations by users.
 
 Future Plans
 
-Real waveform extraction from audio files
 Better AI stem separation integration
-Ability to export individual stems
 Possible web version in the future
+Ideas to create a real mobile application in future
 
 
 Author
