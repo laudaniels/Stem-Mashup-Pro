@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Neon Mashup Studio generated output
+/presets/
+/separated_stems/
+/preview_temp.mp3
+/final_remix.mp3

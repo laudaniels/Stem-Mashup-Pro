@@ -1,28 +1,30 @@
 # Neon Mashup Studio
 
-**Multi-Track AI-Powered Song Mashup Studio**
+**Multi-Track AI-Powered Song Mashup Studio with Beatmatching**
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey?style=flat-square)
+![Platform](https://img.shields.io/badge/Platform-Windows_macOS_Linux-lightgrey?style=flat-square)
 
-A desktop application that allows users to load 2–3 songs and creatively mash them up with independent control over vocals, beats, bass, pitch, reverb, speed, EQ, and more.
+A powerful tool for creating mashups by loading 2–3 songs and mixing them with independent control over vocals, beats, bass, pitch, reverb, speed, EQ, and **automatic beatmatching**. Available as both a desktop app (Tkinter) and a web interface (Gradio).
 
 ---
 
 ## Features
 
-- Load up to **3 songs**
-- Independent volume controls (Vocals / Beats / Bass)
-- Pitch shifting, Reverb, and Speed control
-- 3-band EQ (Low, Mid, High)
-- **Live Preview** (60 seconds)
-- Global **Crossfader**
-- Preset Save / Load system
-- Progress bar during rendering
-- Dark Bluish-Neon modern UI
-- Basic waveform visualization
-- Stem Separator
+- **Load up to 3 songs** with automatic BPM detection
+- **Beatmatching** — automatically align beat grids across tracks
+- **Master volume per song** — isolate any single song's stem mix or blend all three
+- **Independent stem controls** — Vocals, Beats, Bass, Other (via AI separation)
+- **Per-song effects** — Pitch shift, Reverb, Speed, 3-band EQ (Low/Mid/High)
+- **Crossfader** — balance Song 1 and Song 2
+- **Target tempo** — stretch all tracks to a common BPM
+- **Live preview** — render a 60-second sample in real-time
+- **Preset system** — save/load your favorite mixer settings as JSON
+- **Stem separator** — use Demucs to isolate vocals, drums, bass, and other instruments
+- **Two interfaces:**
+  - **Desktop (Tkinter)** — dark neon UI with waveform visualization
+  - **Web (Gradio)** — modern browser-based interface, same functionality
 
 ---
 
@@ -37,10 +39,11 @@ A desktop application that allows users to load 2–3 songs and creatively mash 
 ## Tech Stack
 
 - **Python 3.10+**
-- **Tkinter** – GUI
-- **FFmpeg** – Audio processing
-- **Demucs** – AI stem separation (optional)
-- **Matplotlib + NumPy** – Waveform display
+- **Tkinter** (desktop) / **Gradio** (web) – GUI
+- **FFmpeg** – audio mixing and effects
+- **Demucs** – AI stem separation
+- **Librosa** – automatic BPM detection and beat anchor analysis
+- **NumPy** – numerical processing
 
 ---
 
@@ -51,42 +54,115 @@ A desktop application that allows users to load 2–3 songs and creatively mash 
 ```bash
 git clone https://github.com/codewithpb11/neon-mashup-studio.git
 cd neon-mashup-studio
+```
 
-Install dependencies:
+2. Create and activate a virtual environment:
 
-Bashpip install -r requirements.txt
+```bash
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+source .venv/bin/activate   # macOS/Linux
+```
 
-Make sure FFmpeg is installed and added to your system PATH.
-Run the application:
+3. Install dependencies:
 
-Bashpython app_gui.py
+```bash
+pip install -r requirements.txt
+```
 
-How to Use
+4. Ensure FFmpeg is installed and in your system PATH:
+   - **Windows**: [ffmpeg.org](https://ffmpeg.org/download.html)
+   - **macOS**: `brew install ffmpeg`
+   - **Linux**: `sudo apt-get install ffmpeg`
 
-Click + Song 1, + Song 2 (and optionally + Song 3) to load tracks.
-Adjust the sliders for Vocals, Beats, Bass, Pitch, Reverb, Speed, and EQ.
-Use the Crossfader to balance between songs.
-Click Live Preview to hear a 60-second sample.
-Click Render Remix to generate the final output.
-Save your favorite settings using Save Preset.
+---
 
+## How to Use
 
-Disclaimer
-This tool is created for educational and creative purposes only.
-Please only use audio files that you own or have proper rights to use.
-The developer is not responsible for any copyright violations by users.
+### Desktop Version (Tkinter)
 
-Future Plans
+```bash
+python app_gui.py
+```
 
-Better AI stem separation integration
-Possible web version in the future
-Ideas to create a real mobile application in future
+1. Click **+ Song 1**, **+ Song 2** (and optionally **+ Song 3**) to load audio files.
+2. Once loaded, BPM detection starts automatically in the background.
+3. Adjust **Master Volume** for each song to mix the overall levels.
+4. If stems are available (after clicking **SEPARATE STEMS**):
+   - Use **Vocals / Beats / Bass / Other** faders to balance the stems.
+5. Use **Pitch Shift, Reverb, Speed, EQ** sliders to shape each song's sound.
+6. Use the **Crossfader** to balance Song 1 and Song 2.
+7. (Optional) Set a **Target Tempo (BPM)** and enable **Beatmatch** to align all tracks.
+8. Click **▶ LIVE PREVIEW** to hear a 60-second sample.
+9. Click **🎛️ RENDER REMIX** to generate the final full-length output.
+10. Click **💾 Save Preset** to save your mixer settings for later.
 
+### Web Version (Gradio)
 
-Author
-Pramit Baksi
-2nd Year B.Tech Student, Computer Science & Engineering
+```bash
+python gradio_app.py
+```
+
+Opens a browser interface at `http://localhost:7860` with the same controls as the desktop version.
+
+---
+
+## Advanced Features
+
+### Beatmatching
+
+1. Load two or more songs.
+2. Let BPM detection finish (status shows in the song panel).
+3. Set a **Target Tempo (BPM)** — all tracks will be time-stretched to this tempo.
+4. Enable **Beatmatch** — beat grids will automatically align.
+5. (Optional) Use **Beat Phase Offset** (Song 2 & 3 only) to nudge the alignment if the default doesn't feel right.
+
+### Stem Separation
+
+1. Click **SEPARATE STEMS** — this runs Demucs (takes 2–5 minutes per song).
+2. Once complete, the **Vocals / Beats / Bass / Other** faders become active for precise control.
+3. Set any stem volume to 0 to mute it entirely.
+
+### Presets
+
+Save and load your mixer configuration:
+
+```bash
+# Desktop version
+💾 Save Preset → enter a name → saved to presets/my_mashup.json
+
+# Web version
+Preset Name field → Save Preset button
+```
+
+Presets are JSON files and work across both desktop and web versions.
+
+---
+
+## Disclaimer
+
+This tool is created for educational and creative purposes only. Please only use audio files that you own or have proper rights to use. The developer is not responsible for any copyright violations by users.
+
+---
+
+## Author
+
+**Pramit Baksi**  
+2nd Year B.Tech Student, Computer Science & Engineering  
 Kolkata, West Bengal, India
 
-License
-This project is licensed under the MIT License.
+---
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+---
+
+## Future Plans
+
+- Better UI polish for the web version (custom theming)
+- Real-time waveform visualization in the web interface
+- Mobile application
+- Advanced beat-grid editing (bar-level alignment, not just beat-level)
+- A/B comparison mode for quick mashup iteration
