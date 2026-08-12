@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+import gradio as gr
+import json
+import threading
+from pathlib import Path
+import sys
+from mashup_engine import MashupEngine
+
+BASE_DIR = Path(__file__).resolve().parent
+
+def _running_in_venv():
+    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+
+if not _running_in_venv():
+    sys.exit(
+        "Kolkata Studio must be run from inside a virtual environment.\n\n"
+        "Create one and install dependencies first:\n\n"
+        "    python -m venv .venv\n"
+        "    .venv\\Scripts\\activate      (Windows)\n"
+        "    source .venv/bin/activate    (macOS/Linux)\n"
+        "    pip install -r requirements.txt\n"
+        "    python gradio_app.py\n"
+    )
+
+presets_dir = BASE_DIR / "presets"
+presets_dir.mkdir(exist_ok=True)
+
+class StudioState:
+    """Manages the entire studio state: songs, stems, BPMs, sliders, etc."""
+    def __init__(self):
+        self.engine = MashupEngine()
+        self.song_paths = [None, None, None]
+        self.stem_paths = [None, None, None]
+        self.song_bpms = [None, None, None]
+        self.song_beat_anchors = [None, None, None]
+        self.bpm_overrides = [0.0, 0.0, 0.0]
+        self.beat_offsets = [0.0, 0.0, 0.0]
+
+        # Per-song sliders: [master_vol, vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
+        self.sliders = {
+            f"s{i}_{name}": val
+            for i in range(3)
+            for name, val in [
+                ("master_vol", 1.0),
+                ("vocals_vol", 1.0),
+                ("beats_vol", 1.0),
+                ("bass_vol", 1.0),
+                ("other_vol", 1.0),
+                ("pitch_shift", 0.0),
+                ("reverb", 0.0),
+                ("speed", 1.0),
+                ("eq_low", 0.0),
+                ("eq_mid", 0.0),
+                ("eq_high", 0.0),
+            ]
+        }
+        self.crossfader = 50
+        self.target_bpm = 0
+        self.beatmatch = False
+
+    def load_song(self, file_obj, slot):
+        """Load a song and kick off BPM analysis."""
+        if file_obj is None:
+            return f"Song {slot+1}: no file"
+        self.song_paths[slot] = file_obj.name
+        self.stem_paths[slot] = None
+        self.song_bpms[slot] = None
+        self.song_beat_anchors[slot] = None
+
+        def analyze():
+            try:
+                bpm, anchor = self.engine.analyze_track(file_obj.name)
+                self.song_bpms[slot] = bpm
+                self.song_beat_anchors[slot] = anchor
+            except Exception as e:
+                self.song_bpms[slot] = False
+
+        threading.Thread(target=analyze, daemon=True).start()
+        return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)"
+
+    def separate_stems(self):
+        """Separate stems for any loaded songs that don't have them yet."""
+        selected = [(i, p) for i, p in enumerate(self.song_paths) if p and not self.stem_paths[i]]
+        if not selected:
+            return "No new songs to separate."
+
+        def task():
+            try:
+                song_paths_list = [p for _, p in selected]
+                created = self.engine.separate_stems(song_paths_list)
+                for (slot, _), stem_set in zip(selected, created):
+                    self.stem_paths[slot] = stem_set
+            except Exception:
+                pass
+
+        threading.Thread(target=task, daemon=True).start()
+        return "Separating stems — this may take several minutes…"
+
+    def update_slider(self, key, value):
+        self.sliders[key] = value
+
+    def update_crossfader(self, value):
+        self.crossfader = value
+
+    def update_target_bpm(self, value):
+        self.target_bpm = value or 0
+
+    def update_beatmatch(self, value):
+        self.beatmatch = value
+
+    def update_bpm_override(self, slot, value):
+        self.bpm_overrides[slot] = value or 0.0
+
+    def update_beat_offset(self, slot, value):
+        self.beat_offsets[slot] = value or 0.0
+
+    def get_effective_bpms(self):
+        """Return BPMs with overrides applied."""
+        result = []
+        for i in range(3):
+            if self.bpm_overrides[i] > 0:
+                result.append(self.bpm_overrides[i])
+            elif self.song_bpms[i] is None or self.song_bpms[i] is False:
+                result.append(None)
+            else:
+                result.append(self.song_bpms[i])
+        return result
+
+    def get_bpm_display(self, slot):
+        """Get display text for a song's BPM."""
+        if self.song_bpms[slot] is None:
+            return "detecting…"
+        elif self.song_bpms[slot] is False:
+            return "error"
+        else:
+            return f"{self.song_bpms[slot]:.1f}"
+
+    def build_params(self):
+        """Build the params dict for engine.render()."""
+        return {
+            "songs": self.song_paths,
+            "stems": self.stem_paths,
+            "bpms": self.get_effective_bpms(),
+            "beat_anchors": self.song_beat_anchors,
+            "beat_offsets": self.beat_offsets,
+            "target_bpm": self.target_bpm or None,
+            "beatmatch": self.beatmatch,
+            "sliders": self.sliders.copy(),
+            "crossfader": self.crossfader,
+        }
+
+    def preview(self):
+        """Render a 60-second preview."""
+        try:
+            params = self.build_params()
+            if not params["songs"][0] or not params["songs"][1]:
+                return None, "Load Song 1 and Song 2 before previewing."
+            output = self.engine.render(params, preview=True, preview_duration=60)
+            return output, "Preview generated and playing…"
+        except Exception as e:
+            return None, f"Preview error: {str(e)[:100]}"
+
+    def render(self):
+        """Render the full remix."""
+        try:
+            params = self.build_params()
+            if not params["songs"][0] or not params["songs"][1]:
+                return None, "Load Song 1 and Song 2 before rendering."
+            output = self.engine.render(params, preview=False)
+            return output, f"Remix saved as: {output}"
+        except Exception as e:
+            return None, f"Render error: {str(e)[:100]}"
+
+    def save_preset(self, name):
+        """Save current settings to a JSON preset file."""
+        try:
+            data = {
+                "sliders": self.sliders,
+                "crossfader": self.crossfader,
+                "target_bpm": self.target_bpm,
+                "beatmatch": self.beatmatch,
+                "bpm_overrides": self.bpm_overrides,
+                "beat_offsets": self.beat_offsets,
+            }
+            path = presets_dir / f"{name}.json" if not name.endswith(".json") else presets_dir / name
+            with open(path, "w") as f:
+                json.dump(data, f, indent=2)
+            return f"Preset saved: {path.name}"
+        except Exception as e:
+            return f"Save error: {str(e)[:100]}"
+
+    def load_preset(self, name):
+        """Load settings from a JSON preset file."""
+        try:
+            path = presets_dir / name if (presets_dir / name).exists() else presets_dir / f"{name}.json"
+            with open(path) as f:
+                data = json.load(f)
+            self.sliders.update(data.get("sliders", {}))
+            self.crossfader = data.get("crossfader", 50)
+            self.target_bpm = data.get("target_bpm", 0)
+            self.beatmatch = data.get("beatmatch", False)
+            self.bpm_overrides = data.get("bpm_overrides", [0, 0, 0])
+            self.beat_offsets = data.get("beat_offsets", [0, 0, 0])
+            return f"Preset loaded: {path.name}"
+        except Exception as e:
+            return f"Load error: {str(e)[:100]}"
+
+def create_app():
+    state = StudioState()
+
+    with gr.Blocks(
+        title="Kolkata Studio v7.4 - Waveform + Crossfader + Beatmatch",
+        theme=gr.themes.Base(primary_hue="purple")
+    ) as app:
+        gr.Markdown("# Kolkata Studio v7.4 — Waveform + Crossfader + Beatmatch")
+
+        # ===== Load & Analyze =====
+        gr.Markdown("### Load Songs & Auto-Detect BPM")
+
+        with gr.Row():
+            file_inputs = []
+            bpm_displays = []
+            bpm_overrides_ui = []
+            beat_offsets_ui = []
+
+            for i in range(3):
+                with gr.Column():
+                    gr.Markdown(f"**Song {i+1}**")
+                    file_input = gr.File(label=f"Load", file_count="single", type="filepath")
+                    file_inputs.append(file_input)
+
+                    bpm_display = gr.Textbox(label="BPM", value="—", interactive=False)
+                    bpm_displays.append(bpm_display)
+
+                    bpm_override = gr.Number(label="Override BPM", value=0, minimum=0, maximum=200)
+                    bpm_overrides_ui.append(bpm_override)
+
+                    if i == 0:
+                        gr.Textbox(label="Beat Phase Offset", value="— (Reference)", interactive=False)
+                    else:
+                        beat_offset = gr.Number(label="Beat Phase Offset", value=0, step=0.1)
+                        beat_offsets_ui.append((i, beat_offset))
+
+                    file_input.change(
+                        lambda f, slot=i: (state.load_song(f, slot), state.get_bpm_display(slot)),
+                        inputs=[file_input],
+                        outputs=[bpm_display]
+                    )
+
+                    bpm_override.change(
+                        lambda val, slot=i: state.update_bpm_override(slot, val),
+                        inputs=[bpm_override]
+                    )
+
+        # Stem separation
+        with gr.Row():
+            separate_btn = gr.Button("SEPARATE STEMS", scale=1, size="lg")
+            separate_status = gr.Textbox(value="Ready", interactive=False, scale=2)
+
+        separate_btn.click(
+            lambda: state.separate_stems(),
+            outputs=[separate_status]
+        )
+
+        # ===== Per-Song Controls =====
+        gr.Markdown("### Per-Song Levels & Effects")
+
+        slider_refs = {}
+        with gr.Row():
+            for i in range(3):
+                with gr.Column():
+                    gr.Markdown(f"**Song {i+1}**")
+
+                    # Master volume
+                    master = gr.Slider(0, 1, value=1, step=0.05, label="Master Volume")
+                    master.change(lambda v, s=i: state.update_slider(f"s{s}_master_vol", v), inputs=[master])
+                    slider_refs[f"s{i}_master_vol"] = master
+
+                    # Stem volumes (if available)
+                    gr.Markdown("*Stem Levels*")
+                    for name, label in [("vocals_vol", "Vocals"), ("beats_vol", "Beats"), ("bass_vol", "Bass"), ("other_vol", "Other")]:
+                        sl = gr.Slider(0, 1, value=1, step=0.1, label=label)
+                        sl.change(lambda v, s=i, n=name: state.update_slider(f"s{s}_{n}", v), inputs=[sl])
+                        slider_refs[f"s{i}_{name}"] = sl
+
+                    gr.Markdown("*Effects*")
+                    for name, label, min_v, max_v, default in [
+                        ("pitch_shift", "Pitch Shift", -1.5, 1.5, 0),
+                        ("reverb", "Reverb", 0, 1, 0),
+                        ("speed", "Speed", 0.5, 1.5, 1),
+                        ("eq_low", "EQ Low", -1.5, 1.5, 0),
+                        ("eq_mid", "EQ Mid", -1.5, 1.5, 0),
+                        ("eq_high", "EQ High", -1.5, 1.5, 0),
+                    ]:
+                        sl = gr.Slider(min_v, max_v, value=default, step=0.1, label=label)
+                        sl.change(lambda v, s=i, n=name: state.update_slider(f"s{s}_{n}", v), inputs=[sl])
+                        slider_refs[f"s{i}_{name}"] = sl
+
+        # ===== Mixing Controls =====
+        gr.Markdown("### Mixing")
+
+        with gr.Row():
+            crossfader = gr.Slider(0, 100, value=50, step=1, label="Crossfader (Song 1 ← → Song 2)")
+            crossfader.change(lambda v: state.update_crossfader(v), inputs=[crossfader])
+
+        with gr.Row():
+            target_bpm = gr.Number(label="Target Tempo (BPM, 0 = off)", value=0, minimum=0, maximum=200)
+            beatmatch = gr.Checkbox(label="Beatmatch (align beat grids)", value=False)
+
+            target_bpm.change(lambda v: state.update_target_bpm(v), inputs=[target_bpm])
+            beatmatch.change(lambda v: state.update_beatmatch(v), inputs=[beatmatch])
+
+        for slot, offset_ui in beat_offsets_ui:
+            offset_ui.change(lambda v, s=slot: state.update_beat_offset(s, v), inputs=[offset_ui])
+
+        # ===== Presets =====
+        gr.Markdown("### Presets")
+        with gr.Row():
+            preset_name = gr.Textbox(label="Preset Name", placeholder="my_mashup")
+            save_btn = gr.Button("Save Preset")
+            load_btn = gr.Button("Load Preset")
+            preset_status = gr.Textbox(value="Ready", interactive=False, scale=2)
+
+        save_btn.click(
+            lambda name: state.save_preset(name),
+            inputs=[preset_name],
+            outputs=[preset_status]
+        )
+
+        load_btn.click(
+            lambda name: state.load_preset(name),
+            inputs=[preset_name],
+            outputs=[preset_status]
+        )
+
+        # ===== Render =====
+        gr.Markdown("### Render")
+
+        with gr.Row():
+            preview_btn = gr.Button("▶ LIVE PREVIEW", size="lg", scale=1)
+            render_btn = gr.Button("🎛️ RENDER REMIX", size="lg", scale=1)
+
+        with gr.Row():
+            output_audio = gr.Audio(label="Output", type="filepath")
+            render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=2)
+
+        preview_btn.click(
+            lambda: state.preview(),
+            outputs=[output_audio, render_status]
+        )
+
+        render_btn.click(
+            lambda: state.render(),
+            outputs=[output_audio, render_status]
+        )
+
+    return app
+
+if __name__ == "__main__":
+    app = create_app()
+    app.launch(share=False)

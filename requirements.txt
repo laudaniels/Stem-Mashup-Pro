@@ -1,5 +1,6 @@
-numpy
-matplotlib
 torch
 torchaudio
 demucs
+numpy<2
+librosa
+gradio
