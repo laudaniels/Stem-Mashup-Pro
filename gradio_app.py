@@ -487,6 +487,23 @@ def create_app():
                 outputs=[stems_download]
             )
 
+        # Processing progress bar (visual indicator while stems are processing)
+        progress_display = gr.Markdown(value="", visible=False)
+
+        def update_progress_display():
+            if not state.stems_ready() and (state.sep_in_progress or any(state.song_bpms)):
+                # Show progress bar while processing
+                fill = int((state.animation_frame % 20) * 5)  # Animated fill
+                bar = "█" * fill + "░" * (20 - fill)
+                message = f"⚙️ Processing... [{bar}]\n\n**Files analyzed and stems created, have fun Mixing!**"
+                return gr.update(value=message, visible=True)
+            return gr.update(value="", visible=False)
+
+        status_refresh_timer.tick(
+            update_progress_display,
+            outputs=[progress_display]
+        )
+
         def make_load_callback(slot):
             def load_and_update(f):
                 if f is None:
