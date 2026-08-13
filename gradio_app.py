@@ -665,10 +665,16 @@ def create_app():
             outputs=[output_audio, render_status]
         )
 
-        # Enable controls when stems are ready + animated status + pitch suggestion
+        # Enable controls when stems are ready + animated status + pitch suggestion + BPM/Key displays
         def refresh_status_and_controls():
             status_text = state.get_animated_status()
             stems_ready = state.stems_ready()
+
+            # Get BPM and Key displays for both songs
+            bpm1_text = state.get_bpm_display(0)
+            key1_text = state.get_key_display(0)
+            bpm2_text = state.get_bpm_display(1)
+            key2_text = state.get_key_display(1)
 
             # Get pitch shift suggestion (key names)
             keys = state.get_effective_keys()
@@ -682,7 +688,8 @@ def create_app():
                 song2_key = state.engine._key_to_note(keys[1])
                 pitch_text = f"Shift Song 2 from {song2_key} to {song1_key}"
 
-            updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text]
+            updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text,
+                      gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text)]
             # Update all sliders
             for slider in slider_refs.values():
                 updates.append(gr.update(interactive=stems_ready))
@@ -691,7 +698,7 @@ def create_app():
         slider_outputs = list(slider_refs.values())
         status_refresh_timer.tick(
             refresh_status_and_controls,
-            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion] + slider_outputs
+            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1]] + slider_outputs
         )
 
     return app
