@@ -36,6 +36,7 @@ class StudioState:
         self.song_beat_anchors = [None, None]
         self.bpm_overrides = [0.0, 0.0]
         self.beat_offsets = [0.0, 0.0]
+        self.auto_sep_triggered = False
 
         # Per-song sliders: [master_vol, vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -59,10 +60,14 @@ class StudioState:
         self.target_bpm = 0
         self.beatmatch = False
 
+    def both_songs_loaded(self):
+        """Check if both songs are loaded."""
+        return self.song_paths[0] is not None and self.song_paths[1] is not None
+
     def load_song(self, file_obj, slot):
         """Load a song and kick off BPM analysis."""
         if file_obj is None:
-            return f"Song {slot+1}: no file"
+            return f"Song {slot+1}: no file", "", ""
         self.song_paths[slot] = file_obj.name
         self.stem_paths[slot] = None
         self.song_bpms[slot] = None
@@ -77,7 +82,7 @@ class StudioState:
                 self.song_bpms[slot] = False
 
         threading.Thread(target=analyze, daemon=True).start()
-        return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)"
+        return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)", file_obj.name, ""
 
     def separate_stems(self):
         """Separate stems for any loaded songs that don't have them yet."""
@@ -218,17 +223,21 @@ def create_app():
         # ===== Load & Analyze =====
         gr.Markdown("### Load Songs & Auto-Detect BPM")
 
-        with gr.Row():
-            file_inputs = []
-            bpm_displays = []
-            bpm_overrides_ui = []
-            beat_offsets_ui = []
+        file_inputs = []
+        bpm_displays = []
+        bpm_overrides_ui = []
+        beat_offsets_ui = []
+        audio_players = []
 
+        with gr.Row():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
                     file_input = gr.File(label=f"Load", file_count="single", type="filepath")
                     file_inputs.append(file_input)
+
+                    audio_player = gr.Audio(label="Preview", type="filepath", interactive=False)
+                    audio_players.append(audio_player)
 
                     bpm_display = gr.Textbox(label="BPM", value="—", interactive=False)
                     bpm_displays.append(bpm_display)
@@ -242,26 +251,40 @@ def create_app():
                         beat_offset = gr.Number(label="Beat Phase Offset", value=0, step=0.1)
                         beat_offsets_ui.append((i, beat_offset))
 
-                    file_input.change(
-                        lambda f, slot=i: (state.load_song(f, slot), state.get_bpm_display(slot)),
-                        inputs=[file_input],
-                        outputs=[bpm_display]
-                    )
+        # Setup load callbacks with proper closures
+        separate_status = gr.Textbox(value="Ready", interactive=False, scale=2)
 
-                    bpm_override.change(
-                        lambda val, slot=i: state.update_bpm_override(slot, val),
-                        inputs=[bpm_override]
-                    )
+        def make_load_callback(slot):
+            def load_and_update(f):
+                msg, audio_path, _ = state.load_song(f, slot)
+                bpm_text = state.get_bpm_display(slot)
+                sep_status = "Ready"
+                if state.both_songs_loaded() and not state.auto_sep_triggered:
+                    state.auto_sep_triggered = True
+                    sep_status = state.separate_stems()
+                return audio_path, bpm_text, sep_status
+            return load_and_update
 
-        # Stem separation
-        with gr.Row():
-            separate_btn = gr.Button("SEPARATE STEMS", scale=1, size="lg")
-            separate_status = gr.Textbox(value="Ready", interactive=False, scale=2)
+        for i, file_input in enumerate(file_inputs):
+            file_input.change(
+                make_load_callback(i),
+                inputs=[file_input],
+                outputs=[audio_players[i], bpm_displays[i], separate_status]
+            )
 
-        separate_btn.click(
-            lambda: state.separate_stems(),
-            outputs=[separate_status]
-        )
+        # BPM override callbacks
+        for i, bpm_override in enumerate(bpm_overrides_ui):
+            bpm_override.change(
+                lambda val, slot=i: state.update_bpm_override(slot, val),
+                inputs=[bpm_override]
+            )
+
+        # Beat offset callbacks
+        for slot, offset_ui in beat_offsets_ui:
+            offset_ui.change(
+                lambda v, s=slot: state.update_beat_offset(s, v),
+                inputs=[offset_ui]
+            )
 
         # ===== Per-Song Controls =====
         gr.Markdown("### Per-Song Levels & Effects")
@@ -310,9 +333,6 @@ def create_app():
 
             target_bpm.change(lambda v: state.update_target_bpm(v), inputs=[target_bpm])
             beatmatch.change(lambda v: state.update_beatmatch(v), inputs=[beatmatch])
-
-        for slot, offset_ui in beat_offsets_ui:
-            offset_ui.change(lambda v, s=slot: state.update_beat_offset(s, v), inputs=[offset_ui])
 
         # ===== Presets =====
         gr.Markdown("### Presets")
