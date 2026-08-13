@@ -38,12 +38,11 @@ class StudioState:
         self.beat_offsets = [0.0, 0.0]
         self.auto_sep_triggered = False
 
-        # Per-song sliders: [master_vol, vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
+        # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
             f"s{i}_{name}": val
             for i in range(2)
             for name, val in [
-                ("master_vol", 1.0),
                 ("vocals_vol", 1.0),
                 ("beats_vol", 1.0),
                 ("bass_vol", 1.0),
@@ -201,7 +200,8 @@ class StudioState:
             path = presets_dir / name if (presets_dir / name).exists() else presets_dir / f"{name}.json"
             with open(path) as f:
                 data = json.load(f)
-            self.sliders.update(data.get("sliders", {}))
+            loaded_sliders = data.get("sliders", {})
+            self.sliders.update(loaded_sliders)
             self.crossfader = data.get("crossfader", 50)
             self.target_bpm = data.get("target_bpm", 0)
             self.beatmatch = data.get("beatmatch", False)
@@ -294,13 +294,6 @@ def create_app():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
-
-                    # Master volume
-                    master = gr.Slider(0, 1, value=1, step=0.05, label="Master Volume")
-                    master.change(lambda v, s=i: state.update_slider(f"s{s}_master_vol", v), inputs=[master])
-                    slider_refs[f"s{i}_master_vol"] = master
-
-                    # Stem volumes (if available)
                     gr.Markdown("*Stem Levels*")
                     for name, label in [("vocals_vol", "Vocals"), ("beats_vol", "Beats"), ("bass_vol", "Bass"), ("other_vol", "Other")]:
                         sl = gr.Slider(0, 1, value=1, step=0.1, label=label)
