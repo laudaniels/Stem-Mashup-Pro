@@ -41,6 +41,7 @@ class StudioState:
         self.beat_offsets = [0.0, 0.0]
         self.auto_sep_triggered = False
         self._sep_lock = Lock()
+        self._analysis_events = [threading.Event(), threading.Event()]
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -76,6 +77,7 @@ class StudioState:
         self.song_bpms[slot] = None
         self.song_beat_anchors[slot] = None
         self.song_keys[slot] = None
+        self._analysis_events[slot].clear()
 
         def analyze():
             try:
@@ -93,10 +95,12 @@ class StudioState:
                 print(f"[Song {slot+1}] Analysis error: {type(e).__name__}: {e}")
                 self.song_bpms[slot] = False
                 self.song_keys[slot] = -1
+            finally:
+                self._analysis_events[slot].set()
 
         thread = threading.Thread(target=analyze, daemon=True)
-        thread.daemon = True
         thread.start()
+        self._analysis_events[slot].wait(timeout=120)
         return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)", file_obj.name, ""
 
     def update_key_override(self, slot, value):
