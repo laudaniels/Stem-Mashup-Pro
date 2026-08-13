@@ -374,8 +374,8 @@ def create_app():
                     state.song_keys[slot] = None
                     state.add_status(f"🗑️ Song {slot+1} removed")
                     status_text = state.get_status_text()
-                    song2_enabled = gr.update(interactive=False, value=None)
-                    return None, "—", "—", status_text, song2_enabled
+                    song2_reset = gr.update(interactive=False, value=None)
+                    return None, "—", "—", status_text, song2_reset
                 else:
                     msg, audio_path, _ = state.load_song(f, slot)
                     bpm_text = state.get_bpm_display(slot)
@@ -401,6 +401,14 @@ def create_app():
             else:
                 def make_song2_callback(slot):
                     def load_song2(f):
+                        if f is None:
+                            state.song_paths[slot] = None
+                            state.stem_paths[slot] = None
+                            state.song_bpms[slot] = None
+                            state.song_keys[slot] = None
+                            state.add_status(f"🗑️ Song {slot+1} removed")
+                            return None, "—", "—", state.get_status_text()
+
                         msg, audio_path, _ = state.load_song(f, slot)
                         bpm_text = state.get_bpm_display(slot)
                         key_text = state.get_key_display(slot)
