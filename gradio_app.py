@@ -362,7 +362,14 @@ def create_app():
 
         # System status display
         with gr.Row():
-            separate_status = gr.Textbox(label="System Status", value="", interactive=False, lines=6)
+            separate_status = gr.Textbox(
+                label="System Status",
+                value="",
+                interactive=False,
+                lines=6,
+                max_lines=20,
+                show_copy_button=False
+            )
 
         def make_load_callback(slot):
             def load_and_update(f):
