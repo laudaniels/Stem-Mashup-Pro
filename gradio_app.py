@@ -718,7 +718,7 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER REMIX", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio = gr.Audio(label="Output", type="filepath")
+            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", show_download_button=True)
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=2)
 
         preview_btn.click(
@@ -789,6 +789,24 @@ def create_app():
             refresh_status_and_controls,
             outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs
         )
+
+        # Add JavaScript to disable autoplay on the output audio player
+        gr.HTML("""
+        <script>
+        function disableAudioAutoplay() {
+            const audioPlayers = document.querySelectorAll('#output_audio_player audio');
+            audioPlayers.forEach(player => {
+                player.autoplay = false;
+                player.removeAttribute('autoplay');
+            });
+        }
+        // Run on load and whenever audio elements change
+        document.addEventListener('DOMContentLoaded', disableAudioAutoplay);
+        const observer = new MutationObserver(disableAudioAutoplay);
+        observer.observe(document.body, { childList: true, subtree: true });
+        disableAudioAutoplay();
+        </script>
+        """)
 
     return app
 
