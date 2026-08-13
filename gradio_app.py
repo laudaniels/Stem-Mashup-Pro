@@ -79,13 +79,18 @@ class StudioState:
 
         def analyze():
             try:
+                print(f"[Song {slot+1}] Starting BPM analysis...")
                 bpm, anchor = self.engine.analyze_track(file_obj.name)
+                print(f"[Song {slot+1}] BPM detected: {bpm}")
                 self.song_bpms[slot] = bpm
                 self.song_beat_anchors[slot] = anchor
+
+                print(f"[Song {slot+1}] Starting key analysis...")
                 key = self.engine.analyze_key(file_obj.name)
+                print(f"[Song {slot+1}] Key detected: {key}")
                 self.song_keys[slot] = key
             except Exception as e:
-                print(f"Analysis error for Song {slot+1}: {e}")
+                print(f"[Song {slot+1}] Analysis error: {type(e).__name__}: {e}")
                 self.song_bpms[slot] = False
                 self.song_keys[slot] = -1
 
