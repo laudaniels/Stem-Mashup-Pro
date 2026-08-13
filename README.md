@@ -24,6 +24,14 @@ A modern web-based tool for creating mashups by loading and mixing 2 songs with 
 
 ---
 
+## Screenshots
+
+![Main Interface](Prieview1.png)
+
+![Mixer Controls](Preview3.png)
+
+---
+
 ## Tech Stack
 
 - **Python 3.10+**
