@@ -465,7 +465,24 @@ def create_app():
                 lines=6,
                 max_lines=6
             )
-            status_refresh_timer = gr.Timer(value=1.0, active=True)
+            status_refresh_timer = gr.Timer(value=0.5, active=True)
+
+            def update_status_display():
+                status_text = state.get_status_text()
+                # Add progress bar if stems are being processed
+                if not state.stems_ready() and (state.sep_in_progress or any(state.song_bpms)):
+                    fill = int((state.animation_frame % 20) * 5)  # Animated fill
+                    bar = "█" * fill + "░" * (20 - fill)
+                    status_text += f"\n\n⚙️ Processing... [{bar}]"
+                # Show completion message when stems are ready
+                elif state.stems_ready():
+                    status_text += "\n\n✨ Files analyzed and stems created, have fun Mixing!"
+                return gr.update(value=status_text)
+
+            status_refresh_timer.tick(
+                update_status_display,
+                outputs=[separate_status]
+            )
 
         with gr.Row():
             stems_download = gr.File(label="📥 Download Stems (ZIP)", type="filepath", interactive=False)
@@ -486,23 +503,6 @@ def create_app():
                 update_download,
                 outputs=[stems_download]
             )
-
-        # Processing progress bar (visual indicator while stems are processing)
-        progress_display = gr.Markdown(value="", visible=False)
-
-        def update_progress_display():
-            if not state.stems_ready() and (state.sep_in_progress or any(state.song_bpms)):
-                # Show progress bar while processing
-                fill = int((state.animation_frame % 20) * 5)  # Animated fill
-                bar = "█" * fill + "░" * (20 - fill)
-                message = f"⚙️ Processing... [{bar}]\n\n**Files analyzed and stems created, have fun Mixing!**"
-                return gr.update(value=message, visible=True)
-            return gr.update(value="", visible=False)
-
-        status_refresh_timer.tick(
-            update_progress_display,
-            outputs=[progress_display]
-        )
 
         def make_load_callback(slot):
             def load_and_update(f):
