@@ -89,7 +89,7 @@ class StudioState:
         """Add a status message (visible in UI)."""
         with self._status_lock:
             self.status_messages.append(message)
-            if len(self.status_messages) > 20:
+            if len(self.status_messages) > 6:
                 self.status_messages.pop(0)
         print(message)
 
@@ -203,13 +203,15 @@ class StudioState:
     def get_animated_status(self):
         """Return status with animated spinner if stem separation is running."""
         frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        status = self.get_status_text()
+
         if self.sep_in_progress:
             frame = frames[self.animation_frame % len(frames)]
             self.animation_frame += 1
-            status = self.get_status_text()
             if "Running Demucs" in status:
-                return f"{frame} {status}"
-        return self.get_status_text()
+                return f"{status} {frame}"
+
+        return status
 
     def update_slider(self, key, value):
         self.sliders[key] = value
@@ -406,7 +408,7 @@ def create_app():
                 value="",
                 interactive=False,
                 lines=6,
-                max_lines=20
+                max_lines=6
             )
             status_refresh_timer = gr.Timer(value=1.0, active=True)
 
