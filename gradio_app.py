@@ -330,14 +330,14 @@ def create_app():
                         beat_offsets_ui.append((i, beat_offset))
 
         # Setup load callbacks with proper closures
-        separate_status = gr.Textbox(label="Stem Separation Status", value="Ready", interactive=False, scale=2)
+        separate_status = gr.Textbox(label="Stem Separation Status", value="", interactive=False, scale=2, visible=False)
 
         def make_load_callback(slot):
             def load_and_update(f):
                 msg, audio_path, _ = state.load_song(f, slot)
                 bpm_text = state.get_bpm_display(slot)
                 key_text = state.get_key_display(slot)
-                sep_status = "Ready"
+                sep_status = ""
 
                 with state._sep_lock:
                     if state.both_songs_loaded() and not state.auto_sep_triggered:
