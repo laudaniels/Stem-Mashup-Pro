@@ -318,8 +318,7 @@ def create_app():
     state = StudioState()
 
     with gr.Blocks(
-        title="Kolkata Studio v7.4 - Waveform + Crossfader + Beatmatch",
-        theme=gr.themes.Base(primary_hue="purple")
+        title="Kolkata Studio v7.4 - Waveform + Crossfader + Beatmatch"
     ) as app:
         gr.Markdown("# Kolkata Studio v7.4 — Waveform + Crossfader + Beatmatch")
 
@@ -373,8 +372,7 @@ def create_app():
                 value="",
                 interactive=False,
                 lines=6,
-                max_lines=20,
-                show_copy_button=False
+                max_lines=20
             )
             status_refresh_timer = gr.Timer(value=1.0, active=True)
 
@@ -575,4 +573,4 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
-    app.launch(share=False)
+    app.launch(share=False, theme=gr.themes.Base(primary_hue="purple"))
