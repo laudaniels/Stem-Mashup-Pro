@@ -7,7 +7,7 @@ def _running_in_venv():
 
 if not _running_in_venv():
     sys.exit(
-        "Kolkata Studio must be run from inside a virtual environment.\n\n"
+        "Stem Mashup Pro must be run from inside a virtual environment.\n\n"
         "Create one and install dependencies first:\n\n"
         "    python3 -m venv venv\n"
         "    source venv/bin/activate    (macOS/Linux)\n"
