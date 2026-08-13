@@ -567,6 +567,7 @@ def create_app():
         gr.Markdown("### Per-Song Levels & Effects")
 
         slider_refs = {}
+        pitch_dropdowns = []
         with gr.Row():
             for i in range(2):
                 with gr.Column():
@@ -579,13 +580,14 @@ def create_app():
 
                     gr.Markdown("*Effects*")
 
-                    # Pitch shift as key selector dropdown
+                    # Pitch shift as key selector dropdown - shows detected key by default
                     pitch_dropdown = gr.Dropdown(
                         label="Pitch Shift (Select Key)",
                         choices=KEY_NAMES,
                         value=KEY_NAMES[0],
                         interactive=False
                     )
+                    pitch_dropdowns.append(pitch_dropdown)
 
                     def make_pitch_callback(slot):
                         def on_pitch_change(key_name):
@@ -693,7 +695,7 @@ def create_app():
             outputs=[output_audio, render_status]
         )
 
-        # Enable controls when stems are ready + animated status + pitch suggestion + BPM/Key displays
+        # Enable controls when stems are ready + animated status + pitch suggestion + BPM/Key displays + pitch dropdowns
         def refresh_status_and_controls():
             status_text = state.get_animated_status()
             stems_ready = state.stems_ready()
@@ -704,8 +706,12 @@ def create_app():
             bpm2_text = state.get_bpm_display(1)
             key2_text = state.get_key_display(1)
 
-            # Get pitch shift suggestion (key names)
+            # Get detected keys for pitch dropdowns
             keys = state.get_effective_keys()
+            pitch1_value = KEY_NAMES[keys[0]] if keys[0] >= 0 and keys[0] < len(KEY_NAMES) else KEY_NAMES[0]
+            pitch2_value = KEY_NAMES[keys[1]] if keys[1] >= 0 and keys[1] < len(KEY_NAMES) else KEY_NAMES[0]
+
+            # Get pitch shift suggestion (key names)
             if keys[0] < 0 or keys[1] < 0:
                 pitch_text = "Detect both keys first."
             elif keys[0] == keys[1]:
@@ -717,7 +723,8 @@ def create_app():
                 pitch_text = f"Shift Song 2 from {song2_key} to {song1_key}"
 
             updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text,
-                      gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text)]
+                      gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
+                      gr.update(value=pitch1_value), gr.update(value=pitch2_value)]
             # Update all sliders
             for slider in slider_refs.values():
                 updates.append(gr.update(interactive=stems_ready))
@@ -726,7 +733,7 @@ def create_app():
         slider_outputs = list(slider_refs.values())
         status_refresh_timer.tick(
             refresh_status_and_controls,
-            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1]] + slider_outputs
+            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs
         )
 
     return app
