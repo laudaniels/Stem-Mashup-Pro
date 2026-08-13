@@ -631,7 +631,21 @@ def create_app():
             if keys[0] == keys[1]:
                 return f"Keys match! Both are {song1_key_name}"
             else:
-                return f"Shift Song 2 from {song2_key_name} to {song1_key_name}"
+                # Calculate semitone difference
+                diff = state.engine._semitones_between(keys[1], keys[0])
+                abs_diff = abs(diff)
+
+                # Calculate balanced approach: meet in the middle
+                mid_shift_s1 = -diff / 2 if diff > 0 else diff / 2
+                mid_shift_s2 = diff / 2 if diff > 0 else -diff / 2
+                mid_shift_s1 = round(mid_shift_s1 * 2) / 2
+                mid_shift_s2 = round(mid_shift_s2 * 2) / 2
+
+                mid_key_idx = (keys[0] + keys[1]) // 2
+                mid_key_name = state.engine._key_to_note(mid_key_idx)
+
+                return (f"{abs_diff} steps: Shift Song 2 {diff:+d} semitones to {song1_key_name}, "
+                        f"or meet in middle ({mid_key_name}): S1 {mid_shift_s1:+.1f}, S2 {mid_shift_s2:+.1f}")
 
         for key_override in key_overrides_ui:
             key_override.change(
@@ -712,7 +726,7 @@ def create_app():
             pitch1_value = KEY_NAMES[keys[0]] if keys[0] >= 0 and keys[0] < len(KEY_NAMES) else KEY_NAMES[0]
             pitch2_value = KEY_NAMES[keys[1]] if keys[1] >= 0 and keys[1] < len(KEY_NAMES) else KEY_NAMES[0]
 
-            # Get pitch shift suggestion (key names)
+            # Get pitch shift suggestion (key names + options)
             if keys[0] < 0 or keys[1] < 0:
                 pitch_text = "Detect both keys first."
             elif keys[0] == keys[1]:
@@ -721,7 +735,19 @@ def create_app():
             else:
                 song1_key = state.engine._key_to_note(keys[0])
                 song2_key = state.engine._key_to_note(keys[1])
-                pitch_text = f"Shift Song 2 from {song2_key} to {song1_key}"
+                diff = state.engine._semitones_between(keys[1], keys[0])
+                abs_diff = abs(diff)
+
+                mid_shift_s1 = -diff / 2 if diff > 0 else diff / 2
+                mid_shift_s2 = diff / 2 if diff > 0 else -diff / 2
+                mid_shift_s1 = round(mid_shift_s1 * 2) / 2
+                mid_shift_s2 = round(mid_shift_s2 * 2) / 2
+
+                mid_key_idx = (keys[0] + keys[1]) // 2
+                mid_key = state.engine._key_to_note(mid_key_idx)
+
+                pitch_text = (f"{abs_diff} steps: Shift S2 {diff:+d} semitones to {song1_key}, "
+                             f"or middle ({mid_key}): S1 {mid_shift_s1:+.1f}, S2 {mid_shift_s2:+.1f}")
 
             updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text,
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
