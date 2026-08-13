@@ -450,7 +450,7 @@ def create_app():
 
         with gr.Row():
             download_stems_btn = gr.Button("📥 Download Stems (ZIP)", scale=1, interactive=False)
-            stems_download = gr.File(label="Stems File", visible=False)
+            stems_download = gr.File(label="Download", type="filepath")
 
             download_stems_btn.click(
                 lambda: state.download_stems(),
