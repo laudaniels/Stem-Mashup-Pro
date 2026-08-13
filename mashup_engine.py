@@ -124,6 +124,38 @@ class MashupEngine:
         beat_anchor = float(beat_times[0]) + offset if len(beat_times) else offset
         return tempo, beat_anchor
 
+    def analyze_key(self, song_path):
+        """Detect the musical key of a track using chroma features.
+        Returns key as integer: 0=C, 1=C#, ..., 11=B (with option for major/minor).
+        Returns -1 if detection fails."""
+        import librosa
+        import numpy as np
+
+        try:
+            y, sr = librosa.load(song_path, sr=None, mono=True)
+            chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+            chroma_mean = chroma.mean(axis=1)
+            key = int(np.argmax(chroma_mean))
+            return key
+        except Exception:
+            return -1
+
+    @staticmethod
+    def _semitones_between(key1, key2):
+        """Calculate semitone difference between two keys (0-11)."""
+        if key1 == -1 or key2 == -1:
+            return 0
+        diff = (key2 - key1) % 12
+        if diff > 6:
+            diff -= 12
+        return diff
+
+    @staticmethod
+    def _key_to_note(key):
+        """Convert key number (0-11) to note name."""
+        notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        return notes[key] if 0 <= key < 12 else "?"
+
     @staticmethod
     def _atempo_chain(ratio):
         """ffmpeg's atempo filter only accepts a 0.5-2.0 ratio per instance.

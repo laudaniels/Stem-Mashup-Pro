@@ -34,7 +34,9 @@ class StudioState:
         self.stem_paths = [None, None]
         self.song_bpms = [None, None]
         self.song_beat_anchors = [None, None]
+        self.song_keys = [None, None]
         self.bpm_overrides = [0.0, 0.0]
+        self.key_overrides = [-1, -1]
         self.beat_offsets = [0.0, 0.0]
         self.auto_sep_triggered = False
 
@@ -64,24 +66,56 @@ class StudioState:
         return self.song_paths[0] is not None and self.song_paths[1] is not None
 
     def load_song(self, file_obj, slot):
-        """Load a song and kick off BPM analysis."""
+        """Load a song and kick off BPM and key analysis."""
         if file_obj is None:
             return f"Song {slot+1}: no file", "", ""
         self.song_paths[slot] = file_obj.name
         self.stem_paths[slot] = None
         self.song_bpms[slot] = None
         self.song_beat_anchors[slot] = None
+        self.song_keys[slot] = None
 
         def analyze():
             try:
                 bpm, anchor = self.engine.analyze_track(file_obj.name)
                 self.song_bpms[slot] = bpm
                 self.song_beat_anchors[slot] = anchor
+                key = self.engine.analyze_key(file_obj.name)
+                self.song_keys[slot] = key
             except Exception as e:
                 self.song_bpms[slot] = False
 
         threading.Thread(target=analyze, daemon=True).start()
         return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)", file_obj.name, ""
+
+    def update_key_override(self, slot, value):
+        self.key_overrides[slot] = int(value) if value else -1
+
+    def get_effective_keys(self):
+        """Return keys with overrides applied (-1 means not detected/available)."""
+        result = []
+        for i in range(2):
+            if self.key_overrides[i] >= 0:
+                result.append(self.key_overrides[i])
+            else:
+                result.append(self.song_keys[i] if self.song_keys[i] is not None else -1)
+        return result
+
+    def get_key_display(self, slot):
+        """Get display text for a song's key."""
+        if self.song_keys[slot] is None:
+            return "detecting…"
+        elif self.song_keys[slot] == -1:
+            return "error"
+        else:
+            return self.engine._key_to_note(self.song_keys[slot])
+
+    def get_pitch_shift_suggestion(self):
+        """Get suggested pitch shift in semitones to match Song 1's key."""
+        keys = self.get_effective_keys()
+        if keys[0] < 0 or keys[1] < 0:
+            return 0
+        return self.engine._semitones_between(keys[1], keys[0])
 
     def separate_stems(self):
         """Separate stems for any loaded songs that don't have them yet."""
@@ -225,7 +259,9 @@ def create_app():
 
         file_inputs = []
         bpm_displays = []
+        key_displays = []
         bpm_overrides_ui = []
+        key_overrides_ui = []
         beat_offsets_ui = []
         audio_players = []
 
@@ -239,11 +275,17 @@ def create_app():
                     audio_player = gr.Audio(label="Preview", type="filepath", interactive=False)
                     audio_players.append(audio_player)
 
-                    bpm_display = gr.Textbox(label="BPM", value="—", interactive=False)
-                    bpm_displays.append(bpm_display)
+                    with gr.Row():
+                        bpm_display = gr.Textbox(label="BPM", value="—", interactive=False, scale=1)
+                        bpm_displays.append(bpm_display)
+                        key_display = gr.Textbox(label="Key", value="—", interactive=False, scale=1)
+                        key_displays.append(key_display)
 
-                    bpm_override = gr.Number(label="Override BPM", value=0, minimum=0, maximum=200)
-                    bpm_overrides_ui.append(bpm_override)
+                    with gr.Row():
+                        bpm_override = gr.Number(label="Override BPM", value=0, minimum=0, maximum=200, scale=1)
+                        bpm_overrides_ui.append(bpm_override)
+                        key_override = gr.Number(label="Override Key (0-11)", value=-1, minimum=-1, maximum=11, scale=1)
+                        key_overrides_ui.append(key_override)
 
                     if i == 0:
                         gr.Textbox(label="Beat Phase Offset", value="— (Reference)", interactive=False)
@@ -258,18 +300,19 @@ def create_app():
             def load_and_update(f):
                 msg, audio_path, _ = state.load_song(f, slot)
                 bpm_text = state.get_bpm_display(slot)
+                key_text = state.get_key_display(slot)
                 sep_status = "Ready"
                 if state.both_songs_loaded() and not state.auto_sep_triggered:
                     state.auto_sep_triggered = True
                     sep_status = state.separate_stems()
-                return audio_path, bpm_text, sep_status
+                return audio_path, bpm_text, key_text, sep_status
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
             file_input.change(
                 make_load_callback(i),
                 inputs=[file_input],
-                outputs=[audio_players[i], bpm_displays[i], separate_status]
+                outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
             )
 
         # BPM override callbacks
@@ -277,6 +320,13 @@ def create_app():
             bpm_override.change(
                 lambda val, slot=i: state.update_bpm_override(slot, val),
                 inputs=[bpm_override]
+            )
+
+        # Key override callbacks
+        for i, key_override in enumerate(key_overrides_ui):
+            key_override.change(
+                lambda val, slot=i: state.update_key_override(slot, val),
+                inputs=[key_override]
             )
 
         # Beat offset callbacks
@@ -315,6 +365,22 @@ def create_app():
 
         # ===== Mixing Controls =====
         gr.Markdown("### Mixing")
+
+        pitch_suggestion = gr.Textbox(label="Pitch Shift Suggestion", value="—", interactive=False)
+
+        def update_pitch_suggestion():
+            suggestion = state.get_pitch_shift_suggestion()
+            if suggestion == 0:
+                return "Keys match! No pitch shift needed."
+            else:
+                direction = "up" if suggestion > 0 else "down"
+                return f"Shift Song 2 {abs(suggestion)} semitones {direction} to match Song 1"
+
+        for key_override in key_overrides_ui:
+            key_override.change(
+                lambda: update_pitch_suggestion(),
+                outputs=[pitch_suggestion]
+            )
 
         with gr.Row():
             crossfader = gr.Slider(0, 100, value=50, step=1, label="Crossfader (Song 1 ← → Song 2)")
