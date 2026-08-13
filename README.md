@@ -6,7 +6,9 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Windows_macOS_Linux-lightgrey?style=flat-square)
 
-A powerful tool for creating mashups by loading 2–3 songs and mixing them with independent control over vocals, beats, bass, pitch, reverb, speed, EQ, and **automatic beatmatching**. Available as both a desktop app (Tkinter) and a web interface (Gradio).
+A powerful tool for creating mashups by loading 2–3 songs and mixing them with independent control over vocals, beats, bass, pitch, reverb, speed, EQ, and **automatic beatmatching**.
+
+**Current Focus:** Web interface (Gradio) development. The desktop app (Tkinter) is frozen as of v1.0.
 
 ---
 
@@ -22,9 +24,7 @@ A powerful tool for creating mashups by loading 2–3 songs and mixing them with
 - **Live preview** — render a 60-second sample in real-time
 - **Preset system** — save/load your favorite mixer settings as JSON
 - **Stem separator** — use Demucs to isolate vocals, drums, bass, and other instruments
-- **Two interfaces:**
-  - **Desktop (Tkinter)** — dark neon UI with waveform visualization
-  - **Web (Gradio)** — modern browser-based interface, same functionality
+- **Web interface (Gradio)** — modern browser-based interface with full feature set
 
 ---
 
@@ -79,31 +79,25 @@ pip install -r requirements.txt
 
 ## How to Use
 
-### Desktop Version (Tkinter)
-
-```bash
-python app_gui.py
-```
-
-1. Click **+ Song 1**, **+ Song 2** (and optionally **+ Song 3**) to load audio files.
-2. Once loaded, BPM detection starts automatically in the background.
-3. Adjust **Master Volume** for each song to mix the overall levels.
-4. If stems are available (after clicking **SEPARATE STEMS**):
-   - Use **Vocals / Beats / Bass / Other** faders to balance the stems.
-5. Use **Pitch Shift, Reverb, Speed, EQ** sliders to shape each song's sound.
-6. Use the **Crossfader** to balance Song 1 and Song 2.
-7. (Optional) Set a **Target Tempo (BPM)** and enable **Beatmatch** to align all tracks.
-8. Click **▶ LIVE PREVIEW** to hear a 60-second sample.
-9. Click **🎛️ RENDER REMIX** to generate the final full-length output.
-10. Click **💾 Save Preset** to save your mixer settings for later.
-
 ### Web Version (Gradio)
 
 ```bash
-python gradio_app.py
+python3 gradio_app.py
 ```
 
-Opens a browser interface at `http://localhost:7860` with the same controls as the desktop version.
+Opens a browser interface at `http://localhost:7860`.
+
+1. Load up to 3 songs with **Load** buttons — BPM detection starts automatically.
+2. Click **SEPARATE STEMS** to isolate vocals, beats, bass, and other instruments.
+3. Adjust **Master Volume** and **Stem Levels** (Vocals, Beats, Bass, Other) for each song.
+4. Use **Effects** sliders (Pitch Shift, Reverb, Speed, EQ) to shape each track.
+5. Use the **Crossfader** to blend Song 1 and Song 2.
+6. (Optional) Set a **Target Tempo** and enable **Beatmatch** to sync all tracks.
+7. Click **▶ LIVE PREVIEW** to hear a 60-second sample.
+8. Click **🎛️ RENDER REMIX** to generate the final full-length output.
+9. Use **Presets** to save/load your mixer settings.
+
+> **Note:** The desktop version (Tkinter) is archived as of v1.0. See `archive/` for the frozen version.
 
 ---
 

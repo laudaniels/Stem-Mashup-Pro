@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-import gradio as gr
-import json
-import threading
-from pathlib import Path
 import sys
-from mashup_engine import MashupEngine
-
-BASE_DIR = Path(__file__).resolve().parent
+from pathlib import Path
 
 def _running_in_venv():
     return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
@@ -15,12 +9,19 @@ if not _running_in_venv():
     sys.exit(
         "Kolkata Studio must be run from inside a virtual environment.\n\n"
         "Create one and install dependencies first:\n\n"
-        "    python -m venv .venv\n"
-        "    .venv\\Scripts\\activate      (Windows)\n"
-        "    source .venv/bin/activate    (macOS/Linux)\n"
+        "    python3 -m venv venv\n"
+        "    source venv/bin/activate    (macOS/Linux)\n"
+        "    .\\venv\\Scripts\\activate      (Windows)\n"
         "    pip install -r requirements.txt\n"
-        "    python gradio_app.py\n"
+        "    python3 gradio_app.py\n"
     )
+
+import gradio as gr
+import json
+import threading
+from mashup_engine import MashupEngine
+
+BASE_DIR = Path(__file__).resolve().parent
 
 presets_dir = BASE_DIR / "presets"
 presets_dir.mkdir(exist_ok=True)
