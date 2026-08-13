@@ -6,13 +6,13 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Web_Interface-success?style=flat-square)
 
-A modern web-based tool for creating mashups by loading and mixing multiple songs with independent control over vocals, beats, bass, pitch, reverb, speed, EQ, and automatic beatmatching.
+A modern web-based tool for creating mashups by loading and mixing 2 songs with independent control over vocals, beats, bass, pitch, reverb, speed, EQ, and automatic beatmatching.
 
 ---
 
 ## Features
 
-- **Load & mix up to 2–3 songs** with automatic BPM detection
+- **Load & mix 2 songs** with automatic BPM detection
 - **AI Stem Separation** — isolate vocals, beats, bass, and other instruments using Demucs
 - **Independent stem controls** — precise volume and mute control for each element
 - **Per-song effects** — pitch shift, reverb, speed adjustment, 3-band EQ (Low/Mid/High)
@@ -73,12 +73,13 @@ python3 gradio_app.py
 Opens at `http://localhost:7860`
 
 **Basic workflow:**
-1. Load 2–3 songs using the Load buttons
+1. Load 2 songs using the Load buttons or just drop them into the box
 2. Wait for automatic BPM detection
-3. (Optional) Click **SEPARATE STEMS** to isolate individual elements
-4. Adjust volumes, effects, and beatmatching
-5. Click **LIVE PREVIEW** to hear a 60-second sample
-6. Click **RENDER REMIX** to generate the full-length output
+3. Wait for the Stem separation
+4. Download the all the (unchanged) Stems as a ZIP
+5. Adjust volumes, effects, and beatmatching
+6. Click **LIVE PREVIEW** to hear a 60-second sample after every adjustment
+7. Click **RENDER REMIX** to generate the full-length output
 
 ---
 
