@@ -310,6 +310,32 @@ class StudioState:
         except Exception as e:
             return None, f"Render error: {str(e)[:100]}"
 
+    def download_stems(self):
+        """Create a ZIP file of all separated stems."""
+        import zipfile
+
+        if not self.both_songs_loaded():
+            return None, "Load both songs first."
+        if not self.stem_paths[0] or not self.stem_paths[1]:
+            return None, "Separate stems first."
+
+        try:
+            zip_path = BASE_DIR / "stems_export.zip"
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for slot, stem_dict in enumerate(self.stem_paths):
+                    if stem_dict:
+                        song_name = Path(self.song_paths[slot]).stem
+                        for stem_name, stem_path in stem_dict.items():
+                            arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
+                            zf.write(stem_path, arcname=arcname)
+            self.add_status(f"📦 Stems exported: {zip_path.name}")
+            print(f"[Stems] ZIP created: {zip_path}")
+            return str(zip_path), f"Stems downloaded: stems_export.zip"
+        except Exception as e:
+            self.add_status(f"❌ Stem export error: {e}")
+            print(f"[Stems] Export error: {e}")
+            return None, f"Export error: {str(e)[:100]}"
+
     def save_preset(self, name):
         """Save current settings to a JSON preset file."""
         try:
@@ -411,6 +437,21 @@ def create_app():
                 max_lines=6
             )
             status_refresh_timer = gr.Timer(value=1.0, active=True)
+
+        with gr.Row():
+            download_stems_btn = gr.Button("📥 Download Stems (ZIP)", scale=1, interactive=False)
+            stems_download = gr.File(label="Stems File", visible=False)
+
+            download_stems_btn.click(
+                lambda: state.download_stems(),
+                outputs=[stems_download, separate_status]
+            )
+
+            # Enable download button when stems are ready
+            status_refresh_timer.tick(
+                lambda: gr.update(interactive=state.stems_ready()),
+                outputs=[download_stems_btn]
+            )
 
         def make_load_callback(slot):
             def load_and_update(f):
