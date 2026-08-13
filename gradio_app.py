@@ -361,8 +361,9 @@ def create_app():
                         beat_offset = gr.Number(label="Beat Phase Offset", value=0, step=0.1)
                         beat_offsets_ui.append((i, beat_offset))
 
-        # Setup load callbacks with proper closures
-        separate_status = gr.Textbox(label="Stem Separation Status", value="", interactive=False, scale=2, visible=False)
+        # System status display
+        with gr.Row():
+            separate_status = gr.Textbox(label="System Status", value="", interactive=False, lines=6)
 
         def make_load_callback(slot):
             def load_and_update(f):
