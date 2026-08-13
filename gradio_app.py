@@ -51,6 +51,8 @@ class StudioState:
         self._analysis_events = [threading.Event(), threading.Event()]
         self.status_messages = []
         self._status_lock = Lock()
+        self.sep_in_progress = False
+        self.animation_frame = 0
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -176,6 +178,7 @@ class StudioState:
             print("[Stems] No new songs to separate.")
             return "No new songs to separate."
 
+        self.sep_in_progress = True
         self.add_status("🔄 Starting stem separation (2-5 min per song)...")
 
         def task():
@@ -191,9 +194,22 @@ class StudioState:
             except Exception as e:
                 print(f"[Stems] Error: {type(e).__name__}: {e}")
                 self.add_status(f"❌ Stem separation error: {e}")
+            finally:
+                self.sep_in_progress = False
 
         threading.Thread(target=task, daemon=True).start()
         return "Separating stems — this may take several minutes…"
+
+    def get_animated_status(self):
+        """Return status with animated spinner if stem separation is running."""
+        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        if self.sep_in_progress:
+            frame = frames[self.animation_frame % len(frames)]
+            self.animation_frame += 1
+            status = self.get_status_text()
+            if "Running Demucs" in status:
+                return f"{frame} {status}"
+        return self.get_status_text()
 
     def update_slider(self, key, value):
         self.sliders[key] = value
@@ -576,9 +592,9 @@ def create_app():
             outputs=[output_audio, render_status]
         )
 
-        # Enable controls when stems are ready
+        # Enable controls when stems are ready + animated status
         def refresh_status_and_controls():
-            status_text = state.get_status_text()
+            status_text = state.get_animated_status()
             stems_ready = state.stems_ready()
             return status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready)
 
