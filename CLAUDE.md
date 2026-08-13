@@ -1,4 +1,4 @@
-# Neon Mashup Studio — Development Guide
+# Stem Mashup Pro — Development Guide
 
 ## Project Status
 
