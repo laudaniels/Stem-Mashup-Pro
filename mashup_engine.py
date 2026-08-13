@@ -255,11 +255,8 @@ class MashupEngine:
         for slot, song in enumerate(slots):
             if not song:
                 continue
-            # Crossfader balance (song 1/2 only) times this song's own
-            # independent master volume -- 0 fully mutes the track
-            # regardless of its per-stem faders or crossfader position, so
-            # zeroing two songs isolates the third's own stem mix.
-            fade = fades.get(slot, 1.0) * float(sliders.get(f"s{slot}_master_vol", 1.0))
+            # Crossfader balance (song 1/2 only) — stem volumes now handle all level control
+            fade = fades.get(slot, 1.0)
             stem_set = stems_by_slot[slot] if slot < len(stems_by_slot) else None
             valid_stems = (isinstance(stem_set, dict) and
                            all(name in stem_set and Path(stem_set[name]).is_file() for name in self.STEM_NAMES))
