@@ -366,22 +366,28 @@ def create_app():
 
         def make_load_callback(slot):
             def load_and_update(f):
-                msg, audio_path, _ = state.load_song(f, slot)
-                bpm_text = state.get_bpm_display(slot)
-                key_text = state.get_key_display(slot)
-
-                with state._sep_lock:
-                    if state.both_songs_loaded() and not state.auto_sep_triggered:
-                        state.auto_sep_triggered = True
-                        state.separate_stems()
-
-                status_text = state.get_status_text()
-
-                if slot == 0:
-                    song2_enabled = gr.update(interactive=True) if f else gr.update(interactive=False)
-                    return audio_path, bpm_text, key_text, status_text, song2_enabled
+                if f is None:
+                    state.song_paths[slot] = None
+                    state.stem_paths[slot] = None
+                    state.song_bpms[slot] = None
+                    state.song_keys[slot] = None
+                    state.add_status(f"🗑️ Song {slot+1} removed")
+                    status_text = state.get_status_text()
+                    song2_enabled = gr.update(interactive=False, value=None)
+                    return None, "—", "—", status_text, song2_enabled
                 else:
-                    return audio_path, bpm_text, key_text, status_text
+                    msg, audio_path, _ = state.load_song(f, slot)
+                    bpm_text = state.get_bpm_display(slot)
+                    key_text = state.get_key_display(slot)
+
+                    with state._sep_lock:
+                        if state.both_songs_loaded() and not state.auto_sep_triggered:
+                            state.auto_sep_triggered = True
+                            state.separate_stems()
+
+                    status_text = state.get_status_text()
+                    song2_enabled = gr.update(interactive=True)
+                    return audio_path, bpm_text, key_text, status_text, song2_enabled
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
@@ -392,8 +398,23 @@ def create_app():
                     outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status, file_inputs[1]]
                 )
             else:
+                def make_song2_callback(slot):
+                    def load_song2(f):
+                        msg, audio_path, _ = state.load_song(f, slot)
+                        bpm_text = state.get_bpm_display(slot)
+                        key_text = state.get_key_display(slot)
+
+                        with state._sep_lock:
+                            if state.both_songs_loaded() and not state.auto_sep_triggered:
+                                state.auto_sep_triggered = True
+                                state.separate_stems()
+
+                        status_text = state.get_status_text()
+                        return audio_path, bpm_text, key_text, status_text
+                    return load_song2
+
                 file_input.change(
-                    make_load_callback(i),
+                    make_song2_callback(i),
                     inputs=[file_input],
                     outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
                 )
