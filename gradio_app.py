@@ -98,7 +98,7 @@ class StudioState:
             return "\n".join(self.status_messages)
 
     def load_song(self, file_obj, slot):
-        """Load a song and kick off BPM and key analysis."""
+        """Load a song and kick off BPM and key analysis in background."""
         if file_obj is None:
             return f"Song {slot+1}: no file", "", ""
 
@@ -142,6 +142,7 @@ class StudioState:
             finally:
                 self._analysis_events[slot].set()
 
+        # Start analysis in background without waiting
         thread = threading.Thread(target=analyze, daemon=True)
         thread.start()
 
@@ -149,7 +150,7 @@ class StudioState:
             other = 2 - slot
             self.add_status(f"⏳ Waiting for Song {other}...")
 
-        self._analysis_events[slot].wait(timeout=120)
+        # Return immediately with audio file - don't wait for analysis!
         return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)", file_obj.name, ""
 
     def update_key_override(self, slot, value):
