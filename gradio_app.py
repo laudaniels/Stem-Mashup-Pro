@@ -454,11 +454,6 @@ def create_app():
                         )
                         key_overrides_ui.append(key_override)
 
-                    if i == 0:
-                        gr.Textbox(label="Beat Phase Offset", value="— (Reference)", interactive=False)
-                    else:
-                        beat_offset = gr.Number(label="Beat Phase Offset", value=0, step=0.1)
-                        beat_offsets_ui.append((i, beat_offset))
 
         # System status display with auto-refresh
         with gr.Row():
@@ -650,9 +645,14 @@ def create_app():
         with gr.Row():
             target_bpm = gr.Number(label="Target Tempo (BPM, 0 = off)", value=0, minimum=0, maximum=200)
             beatmatch = gr.Checkbox(label="Beatmatch (align beat grids)", value=False)
+            beat_phase_offset = gr.Slider(0, 4, value=0, step=0.1, label="Song 2 Beat Phase (0-4 beats)")
 
             target_bpm.change(lambda v: state.update_target_bpm(v), inputs=[target_bpm])
             beatmatch.change(lambda v: state.update_beatmatch(v), inputs=[beatmatch])
+            beat_phase_offset.change(
+                lambda v: state.update_beat_offset(1, v),
+                inputs=[beat_phase_offset]
+            )
 
         # ===== Presets =====
         gr.Markdown("### Presets")
