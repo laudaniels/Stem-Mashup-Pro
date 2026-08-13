@@ -296,7 +296,7 @@ def create_app():
                         beat_offsets_ui.append((i, beat_offset))
 
         # Setup load callbacks with proper closures
-        separate_status = gr.Textbox(value="Ready", interactive=False, scale=2)
+        separate_status = gr.Textbox(label="Stem Separation Status", value="Ready", interactive=False, scale=2)
 
         def make_load_callback(slot):
             def load_and_update(f):
