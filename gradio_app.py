@@ -332,7 +332,12 @@ def create_app():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
-                    file_input = gr.File(label=f"Load", file_count="single", type="filepath")
+                    file_input = gr.File(
+                        label=f"Load",
+                        file_count="single",
+                        type="filepath",
+                        interactive=(i == 0)
+                    )
                     file_inputs.append(file_input)
 
                     audio_player = gr.Audio(label="Preview", type="filepath", interactive=False)
@@ -371,15 +376,27 @@ def create_app():
                         state.separate_stems()
 
                 status_text = state.get_status_text()
-                return audio_path, bpm_text, key_text, status_text
+
+                if slot == 0:
+                    song2_enabled = gr.update(interactive=True) if f else gr.update(interactive=False)
+                    return audio_path, bpm_text, key_text, status_text, song2_enabled
+                else:
+                    return audio_path, bpm_text, key_text, status_text
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
-            file_input.change(
-                make_load_callback(i),
-                inputs=[file_input],
-                outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
-            )
+            if i == 0:
+                file_input.change(
+                    make_load_callback(i),
+                    inputs=[file_input],
+                    outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status, file_inputs[1]]
+                )
+            else:
+                file_input.change(
+                    make_load_callback(i),
+                    inputs=[file_input],
+                    outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
+                )
 
         # BPM override callbacks
         for i, bpm_override in enumerate(bpm_overrides_ui):
