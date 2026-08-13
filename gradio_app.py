@@ -485,7 +485,7 @@ def create_app():
             )
 
         with gr.Row():
-            stems_download = gr.File(label="📥 Download Stems (ZIP)", type="filepath", interactive=False)
+            stems_download = gr.File(label="📥 Download Stems (ZIP)", type="filepath", interactive=False, scale=1, container=False)
 
             def get_stems_zip():
                 zip_path = BASE_DIR / "stems_export.zip"
