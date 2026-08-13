@@ -335,8 +335,7 @@ def create_app():
                     file_input = gr.File(
                         label=f"Load",
                         file_count="single",
-                        type="filepath",
-                        interactive=(i == 0)
+                        type="filepath"
                     )
                     file_inputs.append(file_input)
 
@@ -374,8 +373,7 @@ def create_app():
                     state.song_keys[slot] = None
                     state.add_status(f"🗑️ Song {slot+1} removed")
                     status_text = state.get_status_text()
-                    song2_reset = gr.update(interactive=False, value=None)
-                    return None, "—", "—", status_text, song2_reset
+                    return None, "—", "—", status_text
                 else:
                     msg, audio_path, _ = state.load_song(f, slot)
                     bpm_text = state.get_bpm_display(slot)
@@ -387,8 +385,7 @@ def create_app():
                             state.separate_stems()
 
                     status_text = state.get_status_text()
-                    song2_enabled = gr.update(interactive=True)
-                    return audio_path, bpm_text, key_text, status_text, song2_enabled
+                    return audio_path, bpm_text, key_text, status_text
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
@@ -396,7 +393,7 @@ def create_app():
                 file_input.change(
                     make_load_callback(i),
                     inputs=[file_input],
-                    outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status, file_inputs[1]]
+                    outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
                 )
             else:
                 def make_song2_callback(slot):
@@ -427,6 +424,8 @@ def create_app():
                     inputs=[file_input],
                     outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
                 )
+
+        # Song 2 is kept enabled (always loadable)
 
         # BPM override callbacks
         for i, bpm_override in enumerate(bpm_overrides_ui):
