@@ -595,12 +595,17 @@ def create_app():
         pitch_suggestion = gr.Textbox(label="Pitch Shift Suggestion", value="—", interactive=False)
 
         def update_pitch_suggestion():
-            suggestion = state.get_pitch_shift_suggestion()
-            if suggestion == 0:
-                return "Keys match! No pitch shift needed."
+            keys = state.get_effective_keys()
+            if keys[0] < 0 or keys[1] < 0:
+                return "Detect both keys first."
+
+            song1_key_name = state.engine._key_to_note(keys[0])
+            song2_key_name = state.engine._key_to_note(keys[1])
+
+            if keys[0] == keys[1]:
+                return f"Keys match! Both are {song1_key_name}"
             else:
-                direction = "up" if suggestion > 0 else "down"
-                return f"Shift Song 2 {abs(suggestion)} semitones {direction} to match Song 1"
+                return f"Shift Song 2 from {song2_key_name} to {song1_key_name}"
 
         for key_override in key_overrides_ui:
             key_override.change(
@@ -665,14 +670,17 @@ def create_app():
             status_text = state.get_animated_status()
             stems_ready = state.stems_ready()
 
-            # Get pitch shift suggestion
-            suggestion = state.get_pitch_shift_suggestion()
-            if suggestion == 0:
-                pitch_text = "Keys match! No pitch shift needed."
-            elif suggestion > 0:
-                pitch_text = f"Shift Song 2 +{suggestion} semitones to match Song 1"
+            # Get pitch shift suggestion (key names)
+            keys = state.get_effective_keys()
+            if keys[0] < 0 or keys[1] < 0:
+                pitch_text = "Detect both keys first."
+            elif keys[0] == keys[1]:
+                key_name = state.engine._key_to_note(keys[0])
+                pitch_text = f"Keys match! Both are {key_name}"
             else:
-                pitch_text = f"Shift Song 2 {suggestion} semitones to match Song 1"
+                song1_key = state.engine._key_to_note(keys[0])
+                song2_key = state.engine._key_to_note(keys[1])
+                pitch_text = f"Shift Song 2 from {song2_key} to {song1_key}"
 
             updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text]
             # Update all sliders
