@@ -594,11 +594,21 @@ def create_app():
             outputs=[output_audio, render_status]
         )
 
-        # Enable controls when stems are ready + animated status
+        # Enable controls when stems are ready + animated status + pitch suggestion
         def refresh_status_and_controls():
             status_text = state.get_animated_status()
             stems_ready = state.stems_ready()
-            updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready)]
+
+            # Get pitch shift suggestion
+            suggestion = state.get_pitch_shift_suggestion()
+            if suggestion == 0:
+                pitch_text = "Keys match! No pitch shift needed."
+            elif suggestion > 0:
+                pitch_text = f"Shift Song 2 +{suggestion} semitones to match Song 1"
+            else:
+                pitch_text = f"Shift Song 2 {suggestion} semitones to match Song 1"
+
+            updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text]
             # Update all sliders
             for slider in slider_refs.values():
                 updates.append(gr.update(interactive=stems_ready))
@@ -607,7 +617,7 @@ def create_app():
         slider_outputs = list(slider_refs.values())
         status_refresh_timer.tick(
             refresh_status_and_controls,
-            outputs=[separate_status, preview_btn, render_btn] + slider_outputs
+            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion] + slider_outputs
         )
 
     return app
