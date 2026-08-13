@@ -30,17 +30,17 @@ class StudioState:
     """Manages the entire studio state: songs, stems, BPMs, sliders, etc."""
     def __init__(self):
         self.engine = MashupEngine()
-        self.song_paths = [None, None, None]
-        self.stem_paths = [None, None, None]
-        self.song_bpms = [None, None, None]
-        self.song_beat_anchors = [None, None, None]
-        self.bpm_overrides = [0.0, 0.0, 0.0]
-        self.beat_offsets = [0.0, 0.0, 0.0]
+        self.song_paths = [None, None]
+        self.stem_paths = [None, None]
+        self.song_bpms = [None, None]
+        self.song_beat_anchors = [None, None]
+        self.bpm_overrides = [0.0, 0.0]
+        self.beat_offsets = [0.0, 0.0]
 
         # Per-song sliders: [master_vol, vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
             f"s{i}_{name}": val
-            for i in range(3)
+            for i in range(2)
             for name, val in [
                 ("master_vol", 1.0),
                 ("vocals_vol", 1.0),
@@ -118,7 +118,7 @@ class StudioState:
     def get_effective_bpms(self):
         """Return BPMs with overrides applied."""
         result = []
-        for i in range(3):
+        for i in range(2):
             if self.bpm_overrides[i] > 0:
                 result.append(self.bpm_overrides[i])
             elif self.song_bpms[i] is None or self.song_bpms[i] is False:
@@ -200,8 +200,8 @@ class StudioState:
             self.crossfader = data.get("crossfader", 50)
             self.target_bpm = data.get("target_bpm", 0)
             self.beatmatch = data.get("beatmatch", False)
-            self.bpm_overrides = data.get("bpm_overrides", [0, 0, 0])
-            self.beat_offsets = data.get("beat_offsets", [0, 0, 0])
+            self.bpm_overrides = data.get("bpm_overrides", [0, 0])
+            self.beat_offsets = data.get("beat_offsets", [0, 0])
             return f"Preset loaded: {path.name}"
         except Exception as e:
             return f"Load error: {str(e)[:100]}"
@@ -224,7 +224,7 @@ def create_app():
             bpm_overrides_ui = []
             beat_offsets_ui = []
 
-            for i in range(3):
+            for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
                     file_input = gr.File(label=f"Load", file_count="single", type="filepath")
@@ -268,7 +268,7 @@ def create_app():
 
         slider_refs = {}
         with gr.Row():
-            for i in range(3):
+            for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
 
