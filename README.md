@@ -26,9 +26,10 @@ A modern web-based tool for creating mashups by loading and mixing 2 songs with 
 
 ## Screenshots
 
-![Main Interface](Prieview1.png)
 
-![Mixer Controls](Preview3.png)
+<img width="1482" height="924" alt="Per-Song Levels   Effects" src="https://github.com/user-attachments/assets/251da497-b553-4e01-b8ba-96331fed10f9" />
+<img width="1489" height="957" alt="Main Song Selection" src="https://github.com/user-attachments/assets/8f85be48-6a8c-4722-b6cd-033c09de3daf" />
+<img width="1488" height="695" alt="Mixing" src="https://github.com/user-attachments/assets/03641557-2d27-49e9-b9c0-a520926bd614" />
 
 ---
 
