@@ -46,7 +46,6 @@ class StudioState:
         self.bpm_overrides = [0.0, 0.0]
         self.key_overrides = [-1, -1]
         self.beat_offsets = [0.0, 0.0]
-        self.auto_sep_triggered = False
         self._sep_lock = Lock()
         self._analysis_events = [threading.Event(), threading.Event()]
         self.status_messages = []
@@ -125,6 +124,17 @@ class StudioState:
                 self.song_keys[slot] = key
                 key_name = self.engine._key_to_note(key) if key >= 0 else "?"
                 self.add_status(f"✓ Song {slot+1}: Key = {key_name}")
+
+                # Start stem separation for this song immediately after analysis
+                if not self.stem_paths[slot]:
+                    self.add_status(f"🔄 Song {slot+1}: Starting stem separation...")
+                    try:
+                        stem_set = self.engine.separate_stems([file_obj.name])
+                        self.stem_paths[slot] = stem_set[0]
+                        self.add_status(f"✓ Song {slot+1}: Stems ready (Vocals, Beats, Bass, Other)")
+                    except Exception as sep_e:
+                        self.add_status(f"❌ Song {slot+1}: Stem separation error: {sep_e}")
+
             except Exception as e:
                 self.add_status(f"❌ Song {slot+1}: Analysis error: {e}")
                 self.song_bpms[slot] = False
@@ -467,12 +477,6 @@ def create_app():
                     msg, audio_path, _ = state.load_song(f, slot)
                     bpm_text = state.get_bpm_display(slot)
                     key_text = state.get_key_display(slot)
-
-                    with state._sep_lock:
-                        if state.both_songs_loaded() and not state.auto_sep_triggered:
-                            state.auto_sep_triggered = True
-                            state.separate_stems()
-
                     status_text = state.get_status_text()
                     return audio_path, bpm_text, key_text, status_text
             return load_and_update
@@ -498,12 +502,6 @@ def create_app():
                         msg, audio_path, _ = state.load_song(f, slot)
                         bpm_text = state.get_bpm_display(slot)
                         key_text = state.get_key_display(slot)
-
-                        with state._sep_lock:
-                            if state.both_songs_loaded() and not state.auto_sep_triggered:
-                                state.auto_sep_triggered = True
-                                state.separate_stems()
-
                         status_text = state.get_status_text()
                         return audio_path, bpm_text, key_text, status_text
                     return load_song2
