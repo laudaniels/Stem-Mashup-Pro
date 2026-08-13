@@ -126,13 +126,23 @@ class MashupEngine:
 
     def analyze_key(self, song_path):
         """Detect the musical key of a track using chroma features.
-        Returns key as integer: 0=C, 1=C#, ..., 11=B (with option for major/minor).
-        Returns -1 if detection fails."""
+        Returns key as integer: 0=C, 1=C#, ..., 11=B.
+        Returns -1 if detection fails.
+
+        Analyzes a 30s window (same as BPM analysis window) to keep it fast."""
         import librosa
         import numpy as np
 
         try:
-            y, sr = librosa.load(song_path, sr=None, mono=True)
+            total_duration = librosa.get_duration(path=song_path)
+        except TypeError:
+            total_duration = librosa.get_duration(filename=song_path)
+
+        offset = 15.0 if total_duration > 90.0 else 0.0
+        window = min(30.0, max(total_duration - offset, 1.0))
+
+        try:
+            y, sr = librosa.load(song_path, sr=None, mono=True, offset=offset, duration=window)
             chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
             chroma_mean = chroma.mean(axis=1)
             key = int(np.argmax(chroma_mean))

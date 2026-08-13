@@ -85,9 +85,13 @@ class StudioState:
                 key = self.engine.analyze_key(file_obj.name)
                 self.song_keys[slot] = key
             except Exception as e:
+                print(f"Analysis error for Song {slot+1}: {e}")
                 self.song_bpms[slot] = False
+                self.song_keys[slot] = -1
 
-        threading.Thread(target=analyze, daemon=True).start()
+        thread = threading.Thread(target=analyze, daemon=True)
+        thread.daemon = True
+        thread.start()
         return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)", file_obj.name, ""
 
     def update_key_override(self, slot, value):
