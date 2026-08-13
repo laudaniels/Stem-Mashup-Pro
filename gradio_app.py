@@ -27,6 +27,13 @@ BASE_DIR = Path(__file__).resolve().parent
 presets_dir = BASE_DIR / "presets"
 presets_dir.mkdir(exist_ok=True)
 
+KEY_NAMES = [
+    "C major", "C#/Db major", "D major", "D#/Eb major", "E major", "F major",
+    "F#/Gb major", "G major", "G#/Ab major", "A major", "A#/Bb major", "B major",
+    "C minor", "C#/Db minor", "D minor", "D#/Eb minor", "E minor", "F minor",
+    "F#/Gb minor", "G minor", "G#/Ab minor", "A minor", "A#/Bb minor", "B minor"
+]
+
 class StudioState:
     """Manages the entire studio state: songs, stems, BPMs, sliders, etc."""
     def __init__(self):
@@ -213,9 +220,15 @@ class StudioState:
         print(f"[Beat Offset] Song {slot+1} = {self.beat_offsets[slot]}s")
 
     def update_key_override(self, slot, value):
-        self.key_overrides[slot] = int(value) if value else -1
-        display = f"Key {self._key_to_note(self.key_overrides[slot])}" if self.key_overrides[slot] >= 0 else "auto"
-        print(f"[Key Override] Song {slot+1} = {display}")
+        """Update key override from dropdown selection."""
+        if value and value in KEY_NAMES:
+            self.key_overrides[slot] = KEY_NAMES.index(value)
+            print(f"[Key Override] Song {slot+1} = {value}")
+            self.add_status(f"🎹 Song {slot+1} key override: {value}")
+        else:
+            self.key_overrides[slot] = -1
+            print(f"[Key Override] Song {slot+1} = auto-detect")
+            self.add_status(f"🎹 Song {slot+1} key override: auto-detect")
 
     def _key_to_note(self, key):
         """Convert key number to note name."""
@@ -356,7 +369,12 @@ def create_app():
                     with gr.Row():
                         bpm_override = gr.Number(label="Override BPM", value=0, minimum=0, maximum=200, scale=1)
                         bpm_overrides_ui.append(bpm_override)
-                        key_override = gr.Number(label="Override Key (0-11)", value=-1, minimum=-1, maximum=11, scale=1)
+                        key_override = gr.Dropdown(
+                            label="Override Key",
+                            choices=["Auto-detect"] + KEY_NAMES,
+                            value="Auto-detect",
+                            scale=1
+                        )
                         key_overrides_ui.append(key_override)
 
                     if i == 0:
