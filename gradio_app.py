@@ -46,6 +46,7 @@ class StudioState:
         self.bpm_overrides = [0.0, 0.0]
         self.key_overrides = [-1, -1]
         self.beat_offsets = [0.0, 0.0]
+        self.pitch_manually_changed = [False, False]  # Track if user has manually changed pitch
         self._sep_lock = Lock()
         self._analysis_events = [threading.Event(), threading.Event()]
         self.status_messages = []
@@ -511,6 +512,7 @@ def create_app():
                     state.stem_paths[slot] = None
                     state.song_bpms[slot] = None
                     state.song_keys[slot] = None
+                    state.pitch_manually_changed[slot] = False
                     state.add_status(f"🗑️ Song {slot+1} removed")
                     status_text = state.get_status_text()
                     return None, "—", "—", status_text
@@ -537,6 +539,7 @@ def create_app():
                             state.stem_paths[slot] = None
                             state.song_bpms[slot] = None
                             state.song_keys[slot] = None
+                            state.pitch_manually_changed[slot] = False
                             state.add_status(f"🗑️ Song {slot+1} removed")
                             return None, "—", "—", state.get_status_text()
 
@@ -605,6 +608,7 @@ def create_app():
                     def make_pitch_callback(slot):
                         def on_pitch_change(key_name):
                             if key_name in KEY_NAMES:
+                                state.pitch_manually_changed[slot] = True
                                 key_idx = KEY_NAMES.index(key_name)
                                 detected_idx = state.song_keys[slot] if state.song_keys[slot] is not None else 0
                                 semitone_shift = (key_idx - detected_idx) % 12
@@ -738,10 +742,16 @@ def create_app():
             bpm2_text = state.get_bpm_display(1)
             key2_text = state.get_key_display(1)
 
-            # Get detected keys for pitch dropdowns
+            # Get detected keys for pitch suggestion and dropdowns
             keys = state.get_effective_keys()
-            pitch1_value = KEY_NAMES[keys[0]] if keys[0] >= 0 and keys[0] < len(KEY_NAMES) else KEY_NAMES[0]
-            pitch2_value = KEY_NAMES[keys[1]] if keys[1] >= 0 and keys[1] < len(KEY_NAMES) else KEY_NAMES[0]
+
+            # Prepare pitch dropdown updates (only if user hasn't manually changed them)
+            pitch1_update = gr.update()
+            pitch2_update = gr.update()
+            if not state.pitch_manually_changed[0] and keys[0] >= 0:
+                pitch1_update = gr.update(value=KEY_NAMES[keys[0]])
+            if not state.pitch_manually_changed[1] and keys[1] >= 0:
+                pitch2_update = gr.update(value=KEY_NAMES[keys[1]])
 
             # Get pitch shift suggestion (key names + options)
             if keys[0] < 0 or keys[1] < 0:
@@ -768,7 +778,7 @@ def create_app():
 
             updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text,
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
-                      gr.update(value=pitch1_value), gr.update(value=pitch2_value)]
+                      pitch1_update, pitch2_update]
             # Update all sliders
             for slider in slider_refs.values():
                 updates.append(gr.update(interactive=stems_ready))
