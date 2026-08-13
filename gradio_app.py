@@ -70,6 +70,12 @@ class StudioState:
         """Check if both songs are loaded."""
         return self.song_paths[0] is not None and self.song_paths[1] is not None
 
+    def stems_ready(self):
+        """Check if stems are separated for both songs."""
+        return (self.both_songs_loaded() and
+                self.stem_paths[0] is not None and
+                self.stem_paths[1] is not None)
+
     def add_status(self, message):
         """Add a status message (visible in UI)."""
         with self._status_lock:
@@ -360,7 +366,7 @@ def create_app():
                         beat_offset = gr.Number(label="Beat Phase Offset", value=0, step=0.1)
                         beat_offsets_ui.append((i, beat_offset))
 
-        # System status display
+        # System status display with auto-refresh
         with gr.Row():
             separate_status = gr.Textbox(
                 label="System Status",
@@ -370,6 +376,7 @@ def create_app():
                 max_lines=20,
                 show_copy_button=False
             )
+            status_refresh_timer = gr.Timer(value=1.0, active=True)
 
         def make_load_callback(slot):
             def load_and_update(f):
@@ -465,7 +472,7 @@ def create_app():
                     gr.Markdown(f"**Song {i+1}**")
                     gr.Markdown("*Stem Levels*")
                     for name, label in [("vocals_vol", "Vocals"), ("beats_vol", "Beats"), ("bass_vol", "Bass"), ("other_vol", "Other")]:
-                        sl = gr.Slider(0, 1, value=1, step=0.1, label=label)
+                        sl = gr.Slider(0, 1, value=1, step=0.1, label=label, interactive=False)
                         sl.change(lambda v, s=i, n=name: state.update_slider(f"s{s}_{n}", v), inputs=[sl])
                         slider_refs[f"s{i}_{name}"] = sl
 
@@ -478,7 +485,7 @@ def create_app():
                         ("eq_mid", "EQ Mid", -1.5, 1.5, 0),
                         ("eq_high", "EQ High", -1.5, 1.5, 0),
                     ]:
-                        sl = gr.Slider(min_v, max_v, value=default, step=0.1, label=label)
+                        sl = gr.Slider(min_v, max_v, value=default, step=0.1, label=label, interactive=False)
                         sl.change(lambda v, s=i, n=name: state.update_slider(f"s{s}_{n}", v), inputs=[sl])
                         slider_refs[f"s{i}_{name}"] = sl
 
@@ -536,8 +543,8 @@ def create_app():
         gr.Markdown("### Render")
 
         with gr.Row():
-            preview_btn = gr.Button("▶ LIVE PREVIEW", size="lg", scale=1)
-            render_btn = gr.Button("🎛️ RENDER REMIX", size="lg", scale=1)
+            preview_btn = gr.Button("▶ LIVE PREVIEW", size="lg", scale=1, interactive=False)
+            render_btn = gr.Button("🎛️ RENDER REMIX", size="lg", scale=1, interactive=False)
 
         with gr.Row():
             output_audio = gr.Audio(label="Output", type="filepath")
@@ -551,6 +558,17 @@ def create_app():
         render_btn.click(
             lambda: state.render(),
             outputs=[output_audio, render_status]
+        )
+
+        # Enable controls when stems are ready
+        def refresh_status_and_controls():
+            status_text = state.get_status_text()
+            stems_ready = state.stems_ready()
+            return status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready)
+
+        status_refresh_timer.tick(
+            refresh_status_and_controls,
+            outputs=[separate_status, preview_btn, render_btn]
         )
 
     return app
