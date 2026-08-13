@@ -19,6 +19,7 @@ if not _running_in_venv():
 import gradio as gr
 import json
 import threading
+from threading import Lock
 from mashup_engine import MashupEngine
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -39,6 +40,7 @@ class StudioState:
         self.key_overrides = [-1, -1]
         self.beat_offsets = [0.0, 0.0]
         self.auto_sep_triggered = False
+        self._sep_lock = Lock()
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -302,9 +304,12 @@ def create_app():
                 bpm_text = state.get_bpm_display(slot)
                 key_text = state.get_key_display(slot)
                 sep_status = "Ready"
-                if state.both_songs_loaded() and not state.auto_sep_triggered:
-                    state.auto_sep_triggered = True
-                    sep_status = state.separate_stems()
+
+                with state._sep_lock:
+                    if state.both_songs_loaded() and not state.auto_sep_triggered:
+                        state.auto_sep_triggered = True
+                        sep_status = state.separate_stems()
+
                 return audio_path, bpm_text, key_text, sep_status
             return load_and_update
 
