@@ -511,8 +511,35 @@ def create_app():
                         slider_refs[f"s{i}_{name}"] = sl
 
                     gr.Markdown("*Effects*")
+
+                    # Pitch shift as key selector dropdown
+                    pitch_dropdown = gr.Dropdown(
+                        label="Pitch Shift (Select Key)",
+                        choices=KEY_NAMES,
+                        value=KEY_NAMES[0],
+                        interactive=False
+                    )
+
+                    def make_pitch_callback(slot):
+                        def on_pitch_change(key_name):
+                            if key_name in KEY_NAMES:
+                                key_idx = KEY_NAMES.index(key_name)
+                                detected_idx = state.song_keys[slot] if state.song_keys[slot] is not None else 0
+                                semitone_shift = (key_idx - detected_idx) % 12
+                                if semitone_shift > 6:
+                                    semitone_shift -= 12
+                                state.update_slider(f"s{slot}_pitch_shift", semitone_shift)
+                                state.add_status(f"🎵 Song {slot+1} pitch: {key_name} ({semitone_shift:+d} semitones)")
+                        return on_pitch_change
+
+                    pitch_dropdown.change(
+                        make_pitch_callback(i),
+                        inputs=[pitch_dropdown]
+                    )
+                    slider_refs[f"s{i}_pitch_shift"] = pitch_dropdown
+
+                    # Other effects
                     for name, label, min_v, max_v, default in [
-                        ("pitch_shift", "Pitch Shift", -1.5, 1.5, 0),
                         ("reverb", "Reverb", 0, 1, 0),
                         ("speed", "Speed", 0.5, 1.5, 1),
                         ("eq_low", "EQ Low", -1.5, 1.5, 0),
