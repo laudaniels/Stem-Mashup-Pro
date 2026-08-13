@@ -598,11 +598,16 @@ def create_app():
         def refresh_status_and_controls():
             status_text = state.get_animated_status()
             stems_ready = state.stems_ready()
-            return status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready)
+            updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready)]
+            # Update all sliders
+            for slider in slider_refs.values():
+                updates.append(gr.update(interactive=stems_ready))
+            return updates
 
+        slider_outputs = list(slider_refs.values())
         status_refresh_timer.tick(
             refresh_status_and_controls,
-            outputs=[separate_status, preview_btn, render_btn]
+            outputs=[separate_status, preview_btn, render_btn] + slider_outputs
         )
 
     return app
