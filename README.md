@@ -1,6 +1,6 @@
-# Neon Mashup Studio
+# Stem Mashup Pro
 
-**Multi-Track AI-Powered Song Mashup Studio with Beatmatching**
+**Multi-Track AI-Powered Song Mashup Studio with Beatmatching & Stem Separation**
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
@@ -139,11 +139,17 @@ This tool is created for educational and creative purposes only. Please only use
 
 ---
 
-## Author
+## Credits & Attribution
 
-**Pramit Baksi**  
-2nd Year B.Tech Student, Computer Science & Engineering  
-Kolkata, West Bengal, India
+**Original Project:** [Neon Mashup Studio](https://github.com/codewithpb11/neon-mashup-studio) by **Pramit Baksi**
+
+This is a significantly enhanced fork featuring:
+- Web-first interface (Gradio) with modern UX
+- Real-time BPM detection and automatic beatmatching
+- Integrated stem separation (Demucs)
+- Advanced mixing controls (pitch shift, reverb, EQ, speed)
+- Preset system for saving/loading mixer settings
+- Improved workflow and feature set
 
 ---
 

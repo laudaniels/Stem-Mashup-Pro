@@ -409,9 +409,9 @@ def create_app():
     state = StudioState()
 
     with gr.Blocks(
-        title="Kolkata Studio v7.4 - Waveform + Crossfader + Beatmatch"
+        title="Stem Mashup Pro - AI-Powered Music Mashup & Mixing Studio"
     ) as app:
-        gr.Markdown("# Kolkata Studio v7.4 — Waveform + Crossfader + Beatmatch")
+        gr.Markdown("# Stem Mashup Pro — AI-Powered Music Mashup & Mixing")
 
         # ===== Load & Analyze =====
         gr.Markdown("### Load Songs & Auto-Detect BPM")
