@@ -136,37 +136,58 @@ class StudioState:
         """Separate stems for any loaded songs that don't have them yet."""
         selected = [(i, p) for i, p in enumerate(self.song_paths) if p and not self.stem_paths[i]]
         if not selected:
+            print("[Stems] No new songs to separate.")
             return "No new songs to separate."
+
+        print(f"[Stems] Starting separation for {len(selected)} song(s)...")
 
         def task():
             try:
                 song_paths_list = [p for _, p in selected]
+                print(f"[Stems] Running Demucs on: {[Path(p).name for p in song_paths_list]}")
                 created = self.engine.separate_stems(song_paths_list)
                 for (slot, _), stem_set in zip(selected, created):
                     self.stem_paths[slot] = stem_set
-            except Exception:
-                pass
+                    print(f"[Stems] Song {slot+1} stems ready: {list(stem_set.keys())}")
+            except Exception as e:
+                print(f"[Stems] Error: {type(e).__name__}: {e}")
 
         threading.Thread(target=task, daemon=True).start()
         return "Separating stems — this may take several minutes…"
 
     def update_slider(self, key, value):
         self.sliders[key] = value
+        print(f"[Slider] {key} = {value}")
 
     def update_crossfader(self, value):
         self.crossfader = value
+        print(f"[Crossfader] {value}% (Song 1 ← → Song 2)")
 
     def update_target_bpm(self, value):
         self.target_bpm = value or 0
+        print(f"[Target BPM] {self.target_bpm}")
 
     def update_beatmatch(self, value):
         self.beatmatch = value
+        print(f"[Beatmatch] {'enabled' if value else 'disabled'}")
 
     def update_bpm_override(self, slot, value):
         self.bpm_overrides[slot] = value or 0.0
+        print(f"[BPM Override] Song {slot+1} = {self.bpm_overrides[slot]} (0=auto)")
 
     def update_beat_offset(self, slot, value):
         self.beat_offsets[slot] = value or 0.0
+        print(f"[Beat Offset] Song {slot+1} = {self.beat_offsets[slot]}s")
+
+    def update_key_override(self, slot, value):
+        self.key_overrides[slot] = int(value) if value else -1
+        display = f"Key {self._key_to_note(self.key_overrides[slot])}" if self.key_overrides[slot] >= 0 else "auto"
+        print(f"[Key Override] Song {slot+1} = {display}")
+
+    def _key_to_note(self, key):
+        """Convert key number to note name."""
+        notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        return notes[key] if 0 <= key < 12 else "?"
 
     def get_effective_bpms(self):
         """Return BPMs with overrides applied."""
