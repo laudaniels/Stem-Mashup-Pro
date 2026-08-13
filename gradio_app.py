@@ -201,6 +201,11 @@ class StudioState:
                     self.stem_paths[slot] = stem_set
                     print(f"[Stems] Song {slot+1} stems ready: {list(stem_set.keys())}")
                     self.add_status(f"✓ Song {slot+1} stems ready: Vocals, Beats, Bass, Other")
+
+                # Auto-create ZIP file when all stems are ready
+                if self.stems_ready():
+                    self._create_stems_zip()
+
             except Exception as e:
                 print(f"[Stems] Error: {type(e).__name__}: {e}")
                 self.add_status(f"❌ Stem separation error: {e}")
@@ -209,6 +214,24 @@ class StudioState:
 
         threading.Thread(target=task, daemon=True).start()
         return "Separating stems — this may take several minutes…"
+
+    def _create_stems_zip(self):
+        """Create ZIP file of stems (called automatically after separation)."""
+        import zipfile
+        try:
+            zip_path = BASE_DIR / "stems_export.zip"
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for slot, stem_dict in enumerate(self.stem_paths):
+                    if stem_dict:
+                        song_name = Path(self.song_paths[slot]).stem
+                        for stem_name, stem_path in stem_dict.items():
+                            arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
+                            zf.write(stem_path, arcname=arcname)
+            self.add_status(f"📦 ZIP ready: stems_export.zip")
+            print(f"[Stems] ZIP auto-created: {zip_path}")
+        except Exception as e:
+            print(f"[Stems] ZIP creation error: {e}")
+            self.add_status(f"❌ ZIP creation error: {e}")
 
     def get_animated_status(self):
         """Return status with animated spinner if stem separation is running."""
@@ -449,18 +472,23 @@ def create_app():
             status_refresh_timer = gr.Timer(value=1.0, active=True)
 
         with gr.Row():
-            download_stems_btn = gr.Button("📥 Download Stems (ZIP)", scale=1, interactive=False)
-            stems_download = gr.File(label="Download", type="filepath")
+            stems_download = gr.File(label="📥 Download Stems (ZIP)", type="filepath", interactive=False)
 
-            download_stems_btn.click(
-                lambda: state.download_stems(),
-                outputs=[stems_download, separate_status]
-            )
+            def get_stems_zip():
+                zip_path = BASE_DIR / "stems_export.zip"
+                if zip_path.exists():
+                    return str(zip_path)
+                return None
 
-            # Enable download button when stems are ready
+            # Update download file when stems are ready
+            def update_download():
+                if state.stems_ready():
+                    return gr.update(interactive=True, value=get_stems_zip())
+                return gr.update(interactive=False, value=None)
+
             status_refresh_timer.tick(
-                lambda: gr.update(interactive=state.stems_ready()),
-                outputs=[download_stems_btn]
+                update_download,
+                outputs=[stems_download]
             )
 
         def make_load_callback(slot):
