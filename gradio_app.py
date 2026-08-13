@@ -42,6 +42,8 @@ class StudioState:
         self.auto_sep_triggered = False
         self._sep_lock = Lock()
         self._analysis_events = [threading.Event(), threading.Event()]
+        self.status_messages = []
+        self._status_lock = Lock()
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -68,10 +70,24 @@ class StudioState:
         """Check if both songs are loaded."""
         return self.song_paths[0] is not None and self.song_paths[1] is not None
 
+    def add_status(self, message):
+        """Add a status message (visible in UI)."""
+        with self._status_lock:
+            self.status_messages.append(message)
+            if len(self.status_messages) > 20:
+                self.status_messages.pop(0)
+        print(message)
+
+    def get_status_text(self):
+        """Return all status messages as a single text block."""
+        with self._status_lock:
+            return "\n".join(self.status_messages)
+
     def load_song(self, file_obj, slot):
         """Load a song and kick off BPM and key analysis."""
         if file_obj is None:
             return f"Song {slot+1}: no file", "", ""
+
         self.song_paths[slot] = file_obj.name
         self.stem_paths[slot] = None
         self.song_bpms[slot] = None
@@ -79,20 +95,23 @@ class StudioState:
         self.song_keys[slot] = None
         self._analysis_events[slot].clear()
 
+        self.add_status(f"📁 Song {slot+1} loaded: {Path(file_obj.name).name}")
+
         def analyze():
             try:
-                print(f"[Song {slot+1}] Starting BPM analysis...")
+                self.add_status(f"🎵 Song {slot+1}: Analyzing BPM...")
                 bpm, anchor = self.engine.analyze_track(file_obj.name)
-                print(f"[Song {slot+1}] BPM detected: {bpm}")
                 self.song_bpms[slot] = bpm
                 self.song_beat_anchors[slot] = anchor
+                self.add_status(f"✓ Song {slot+1}: BPM = {bpm:.0f}")
 
-                print(f"[Song {slot+1}] Starting key analysis...")
+                self.add_status(f"🎼 Song {slot+1}: Analyzing key...")
                 key = self.engine.analyze_key(file_obj.name)
-                print(f"[Song {slot+1}] Key detected: {key}")
                 self.song_keys[slot] = key
+                key_name = self.engine._key_to_note(key) if key >= 0 else "?"
+                self.add_status(f"✓ Song {slot+1}: Key = {key_name}")
             except Exception as e:
-                print(f"[Song {slot+1}] Analysis error: {type(e).__name__}: {e}")
+                self.add_status(f"❌ Song {slot+1}: Analysis error: {e}")
                 self.song_bpms[slot] = False
                 self.song_keys[slot] = -1
             finally:
@@ -100,6 +119,11 @@ class StudioState:
 
         thread = threading.Thread(target=analyze, daemon=True)
         thread.start()
+
+        if not self.both_songs_loaded():
+            other = 2 - slot
+            self.add_status(f"⏳ Waiting for Song {other}...")
+
         self._analysis_events[slot].wait(timeout=120)
         return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)", file_obj.name, ""
 
@@ -139,18 +163,21 @@ class StudioState:
             print("[Stems] No new songs to separate.")
             return "No new songs to separate."
 
-        print(f"[Stems] Starting separation for {len(selected)} song(s)...")
+        self.add_status("🔄 Starting stem separation (2-5 min per song)...")
 
         def task():
             try:
                 song_paths_list = [p for _, p in selected]
                 print(f"[Stems] Running Demucs on: {[Path(p).name for p in song_paths_list]}")
+                self.add_status(f"⚙️ Running Demucs on {len(selected)} song(s)...")
                 created = self.engine.separate_stems(song_paths_list)
                 for (slot, _), stem_set in zip(selected, created):
                     self.stem_paths[slot] = stem_set
                     print(f"[Stems] Song {slot+1} stems ready: {list(stem_set.keys())}")
+                    self.add_status(f"✓ Song {slot+1} stems ready: Vocals, Beats, Bass, Other")
             except Exception as e:
                 print(f"[Stems] Error: {type(e).__name__}: {e}")
+                self.add_status(f"❌ Stem separation error: {e}")
 
         threading.Thread(target=task, daemon=True).start()
         return "Separating stems — this may take several minutes…"
@@ -337,14 +364,14 @@ def create_app():
                 msg, audio_path, _ = state.load_song(f, slot)
                 bpm_text = state.get_bpm_display(slot)
                 key_text = state.get_key_display(slot)
-                sep_status = ""
 
                 with state._sep_lock:
                     if state.both_songs_loaded() and not state.auto_sep_triggered:
                         state.auto_sep_triggered = True
-                        sep_status = state.separate_stems()
+                        state.separate_stems()
 
-                return audio_path, bpm_text, key_text, sep_status
+                status_text = state.get_status_text()
+                return audio_path, bpm_text, key_text, status_text
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
