@@ -730,6 +730,8 @@ def create_app():
 
         # System status display with auto-refresh
         with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
+        with gr.Row():
             separate_status = gr.Textbox(
                 label="Status of Detecting and Separating the Tracks",
                 value="",
@@ -824,6 +826,8 @@ def create_app():
             )
 
         # ===== Per-Song Controls =====
+        with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
         gr.Markdown("### Per-Song Levels & Effects")
 
         slider_refs = {}
