@@ -225,9 +225,10 @@ class StudioState:
                     print(f"[Stems] Song {slot+1} stems ready: {list(stem_set.keys())}")
                     self.add_status(f"✓ Song {slot+1} stems ready: Vocals, Beats, Bass, Other")
 
-                # Auto-create ZIP file when all stems are ready
+                # Auto-create ZIP file and preview when all stems are ready
                 if self.stems_ready():
                     self._create_stems_zip()
+                    self._auto_generate_preview()
 
             except Exception as e:
                 print(f"[Stems] Error: {type(e).__name__}: {e}")
@@ -365,6 +366,25 @@ class StudioState:
             return output, "Preview generated and playing…"
         except Exception as e:
             return None, f"Preview error: {str(e)[:100]}"
+
+    def _auto_generate_preview(self):
+        """Auto-generate preview when stems are ready. Stores in last_render_path."""
+        try:
+            if not self.stems_ready():
+                return
+
+            self.add_status("🎵 Auto-generating preview mix with current settings...")
+            audio_path, msg = self.preview()
+
+            if audio_path:
+                self.last_render_path = audio_path
+                self.add_status("✨ Preview ready! Click play to listen.")
+                print(f"[Auto-Preview] Generated: {Path(audio_path).name}")
+            else:
+                self.add_status(f"Preview not ready: {msg}")
+        except Exception as e:
+            self.add_status(f"❌ Auto-preview error: {str(e)[:100]}")
+            print(f"[Auto-Preview] Error: {e}")
 
     def render(self):
         """Render the full remix and adjusted stems."""
@@ -988,6 +1008,11 @@ def create_app():
                     return gr.update(value=state.last_render_path, interactive=False)
                 return gr.update(value=None, interactive=False)
 
+            def update_output_audio():
+                # Display auto-generated preview or render in the audio player
+                if state.last_render_path and Path(state.last_render_path).exists():
+                    return gr.update(value=state.last_render_path)
+                return gr.update(value=None)
 
         preview_btn.click(
             lambda: state.preview(),
@@ -1085,17 +1110,18 @@ def create_app():
 
         # Single timer callback with all outputs (stems, render, status, controls)
         def update_all():
-            # Call all three update functions
+            # Call all update functions
             status_result = refresh_status_and_controls()
             stems_result = update_stems_download()
             render_result = update_render_download()
+            audio_result = update_output_audio()
 
-            # Combine all results: status outputs + stems download + render download
-            return status_result + [stems_result, render_result]
+            # Combine all results: status outputs + stems download + render download + audio player
+            return status_result + [stems_result, render_result, audio_result]
 
         status_refresh_timer.tick(
             update_all,
-            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip]
+            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip, output_audio]
         )
 
         # CSS for styling (script is now in head parameter)
