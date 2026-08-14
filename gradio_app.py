@@ -982,7 +982,7 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", scale=2, format="mp3")
+            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", scale=2, show_download_button=True, show_label=True)
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
