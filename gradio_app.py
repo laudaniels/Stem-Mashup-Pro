@@ -728,10 +728,6 @@ def create_app():
                         )
                         key_overrides_ui.append(key_override)
 
-        # Visual separator
-        with gr.Row():
-            gr.HTML('<div style="width: 100%; height: 2px; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 1px;"></div>')
-
         # System status display with auto-refresh
         with gr.Row():
             separate_status = gr.Textbox(
