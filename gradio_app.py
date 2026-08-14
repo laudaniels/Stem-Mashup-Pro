@@ -1025,12 +1025,10 @@ def create_app():
                 spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
                 spinner = spinners[state.animation_frame % len(spinners)]
                 state.animation_frame += 1
-                # Find the "Running Demucs" line and add spinner animation
-                if "Running Demucs" in status_text:
-                    status_text = status_text.replace("Running Demucs", f"{spinner} Running Demucs")
-
-            # Always update when processing (even if text is same, spinner changes)
-            if state.sep_in_progress or status_text != last_status_text[0]:
+                # Add spinner at the end of status text
+                status_text += f"\n{spinner} Processing..."
+                status_update = gr.update(value=status_text)
+            elif status_text != last_status_text[0]:
                 last_status_text[0] = status_text
                 status_update = gr.update(value=status_text)
             else:
