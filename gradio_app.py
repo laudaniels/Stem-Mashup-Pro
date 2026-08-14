@@ -237,17 +237,34 @@ class StudioState:
         """Create ZIP file of stems (called automatically after separation)."""
         import zipfile
         import os
+        import subprocess
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             zip_filename = f"stems_export_original_{timestamp}.zip"
             zip_path = AUDIO_DIR / zip_filename
+            temp_dir = AUDIO_DIR / f"temp_stems_{timestamp}"
+            temp_dir.mkdir(exist_ok=True)
+
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for slot, stem_dict in enumerate(self.stem_paths):
                     if stem_dict:
                         song_name = Path(self.song_paths[slot]).stem
                         for stem_name, stem_path in stem_dict.items():
+                            # Convert to 16-bit WAV
+                            temp_wav = temp_dir / f"{stem_name}_{slot}.wav"
+                            subprocess.run(
+                                ["ffmpeg", "-i", stem_path, "-acodec", "pcm_s16le", str(temp_wav), "-y"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=True
+                            )
                             arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
-                            zf.write(stem_path, arcname=arcname)
+                            zf.write(str(temp_wav), arcname=arcname)
+
+            # Clean up temp directory
+            import shutil
+            shutil.rmtree(temp_dir)
+
             # Ensure ZIP file is readable
             os.chmod(str(zip_path), 0o644)
             self.add_status(f"📦 ZIP ready: {zip_filename}")
@@ -545,6 +562,7 @@ class StudioState:
         """Create a ZIP file of all separated stems."""
         import zipfile
         import os
+        import subprocess
 
         if not self.both_songs_loaded():
             return None, "Load both songs first."
@@ -555,13 +573,29 @@ class StudioState:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             zip_filename = f"stems_export_original_{timestamp}.zip"
             zip_path = AUDIO_DIR / zip_filename
+            temp_dir = AUDIO_DIR / f"temp_stems_{timestamp}"
+            temp_dir.mkdir(exist_ok=True)
+
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for slot, stem_dict in enumerate(self.stem_paths):
                     if stem_dict:
                         song_name = Path(self.song_paths[slot]).stem
                         for stem_name, stem_path in stem_dict.items():
+                            # Convert to 16-bit WAV
+                            temp_wav = temp_dir / f"{stem_name}_{slot}.wav"
+                            subprocess.run(
+                                ["ffmpeg", "-i", stem_path, "-acodec", "pcm_s16le", str(temp_wav), "-y"],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=True
+                            )
                             arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
-                            zf.write(stem_path, arcname=arcname)
+                            zf.write(str(temp_wav), arcname=arcname)
+
+            # Clean up temp directory
+            import shutil
+            shutil.rmtree(temp_dir)
+
             # Ensure ZIP file is readable
             os.chmod(str(zip_path), 0o644)
             self.add_status(f"📦 Stems exported: {zip_filename}")
