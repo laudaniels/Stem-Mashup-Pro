@@ -663,6 +663,14 @@ class StudioState:
         except Exception as e:
             return f"Load error: {str(e)[:100]}"
 
+    def count_audio_files(self):
+        """Count files/folders in Audio directory."""
+        count = 0
+        if AUDIO_DIR.exists():
+            for file in AUDIO_DIR.glob("*"):
+                count += 1
+        return count
+
     def cleanup_audio_files(self):
         """Delete all generated audio files."""
         try:
@@ -680,10 +688,11 @@ class StudioState:
                         deleted_count += 1
 
             self.add_status(f"🗑️ Cleanup complete: {deleted_count} files/folders deleted")
-            return f"✓ Cleanup complete! Deleted {deleted_count} files and folders."
+            remaining = self.count_audio_files()
+            return f"✓ Cleanup complete! Deleted {deleted_count} files and folders.", gr.update(value=f"🗑️ Cleanup Audio Files ({remaining})")
         except Exception as e:
             self.add_status(f"❌ Cleanup error: {e}")
-            return f"Cleanup error: {str(e)[:100]}"
+            return f"Cleanup error: {str(e)[:100]}", gr.update()
 
 def create_app():
     state = StudioState()
@@ -1010,12 +1019,13 @@ def create_app():
             gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
         gr.Markdown("### Utilities")
         with gr.Row():
-            cleanup_btn = gr.Button("🗑️ Cleanup Audio Files", size="lg", scale=1)
+            file_count = state.count_audio_files()
+            cleanup_btn = gr.Button(f"🗑️ Cleanup Audio Files ({file_count})", size="lg", scale=1)
             cleanup_status = gr.Textbox(value="Ready", interactive=False, scale=2, label="Status")
 
         cleanup_btn.click(
             lambda: state.cleanup_audio_files(),
-            outputs=[cleanup_status]
+            outputs=[cleanup_status, cleanup_btn]
         )
 
         # Enable controls when stems are ready + animated status + pitch suggestion + BPM/Key displays + pitch dropdowns
