@@ -420,6 +420,19 @@ class StudioState:
             # Ensure file is readable
             os.chmod(output, 0o644)
 
+            # Clean up old render files (keep only 3 most recent)
+            try:
+                render_files = sorted(AUDIO_DIR.glob("final_remix_*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
+                for old_file in render_files[3:]:  # Keep 3 most recent
+                    old_file.unlink()
+
+                # Also clean up old render ZIPs (keep only 3 most recent)
+                render_zips = sorted(AUDIO_DIR.glob("render_output_*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
+                for old_zip in render_zips[3:]:  # Keep 3 most recent
+                    old_zip.unlink()
+            except Exception as e:
+                print(f"[Render] Cleanup warning: {e}")
+
             # Create adjusted stems (pitch/tempo only, no mixing)
             self._render_adjusted_stems_silent(params, key1_name, key2_name, detected_bpm, target_bpm, bpm_overridden, pitch_changed)
 
