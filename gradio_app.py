@@ -1027,13 +1027,12 @@ def create_app():
                 last_status_text[0] = status_text
                 status_update = gr.update(value=status_text)
 
-            # Generate progress bar HTML - animated stripes
+            # Generate progress bar HTML - filling animation
             if state.sep_in_progress:
-                # Create animated striped pattern
-                progress_html = f'''<div style="width: 100%; height: 24px; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 25%, #6366f1 50%, #8b5cf6 75%, #6366f1 100%); background-size: 100% 100%; border-radius: 4px; position: relative; overflow: hidden;">
-                <div style="position: absolute; top: 0; left: {(state.animation_frame % 10) * 10}%; width: 20%; height: 100%; background: rgba(255,255,255,0.2); border-radius: 4px;"></div>
-                </div>'''
-                state.animation_frame = (state.animation_frame + 1) % 100
+                # Calculate fill percentage (0-100%, cycling)
+                fill_pct = (state.animation_frame % 20) * 5
+                progress_html = f'<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; overflow: hidden; position: relative;"><div style="height: 100%; width: {fill_pct}%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 4px; transition: width 0.5s ease;"></div></div>'
+                state.animation_frame = (state.animation_frame + 1) % 20
                 progress_update = gr.update(value=progress_html)
             else:
                 # Reset to empty gray bar when not processing
