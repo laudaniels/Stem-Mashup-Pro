@@ -404,29 +404,22 @@ class StudioState:
             # Render the final remix with all slider settings to Audio folder
             temp_output = self.engine.render(params, preview=False)
 
-            # Convert to 16-bit WAV with unique counter
+            # Use MP3 directly with unique counter
             self.render_counter += 1
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            output_name = f"{output_name_base}_{timestamp}_{self.render_counter}.wav"
+            output_name = f"{output_name_base}_{timestamp}_{self.render_counter}.mp3"
             output = str(AUDIO_DIR / output_name)
 
-            import subprocess
+            import shutil
             import os
-            subprocess.run(
-                ["ffmpeg", "-i", temp_output, "-acodec", "pcm_s16le", output, "-y"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=True
-            )
-
-            # Clean up temp file
-            Path(temp_output).unlink()
+            # Move the temp MP3 to the final location
+            shutil.move(temp_output, output)
             # Ensure file is readable
             os.chmod(output, 0o644)
 
             # Clean up old render files (keep only 3 most recent)
             try:
-                render_files = sorted(AUDIO_DIR.glob("final_remix_*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
+                render_files = sorted(AUDIO_DIR.glob("final_remix_*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
                 for old_file in render_files[3:]:  # Keep 3 most recent
                     old_file.unlink()
 
