@@ -1007,7 +1007,9 @@ def create_app():
                 progress_html = '<div style="width: 100%; height: 24px; background: #f0f0f0; border-radius: 4px; overflow: hidden; position: relative;"><div style="height: 100%; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #6366f1 100%); background-size: 200% 100%; animation: progress-walk 2s infinite; border-radius: 4px;"></div></div>'
                 progress_update = gr.update(value=progress_html)
             else:
-                progress_update = gr.update(value="")
+                # Reset to empty gray bar when not processing
+                progress_html = '<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; overflow: hidden;"></div>'
+                progress_update = gr.update(value=progress_html)
 
             # Get BPM and Key displays for both songs
             bpm1_text = state.get_bpm_display(0)
