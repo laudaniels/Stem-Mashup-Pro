@@ -360,14 +360,11 @@ class StudioState:
         try:
             params = self.build_params()
             if not params["songs"][0] or not params["songs"][1]:
-                return (None, None), "Load Song 1 and Song 2 before previewing."
+                return None, "Load Song 1 and Song 2 before previewing."
             output = self.engine.render(params, preview=True, preview_duration=60)
-            # Return (audio_data, sample_rate) tuple for waveform display
-            import librosa
-            y, sr = librosa.load(output, sr=None)
-            return (y, sr), "Preview generated and playing…"
+            return output, "Preview generated and playing…"
         except Exception as e:
-            return (None, None), f"Preview error: {str(e)[:100]}"
+            return None, f"Preview error: {str(e)[:100]}"
 
     def render(self):
         """Render the full remix and adjusted stems."""
@@ -448,13 +445,10 @@ class StudioState:
             self.last_render_path = zip_path  # Track for display
 
             self.render_in_progress = False
-            # Return (audio_data, sample_rate) tuple for waveform display
-            import librosa
-            y, sr = librosa.load(output, sr=None)
-            return (y, sr), f"✨ Render complete! Remix: {output_name}\n📦 Download package ready in Audio/ folder"
+            return output, f"✨ Render complete! Remix: {output_name}\n📦 Download package ready in Audio/ folder"
         except Exception as e:
             self.render_in_progress = False
-            return (None, None), f"❌ Render error: {str(e)[:100]}"
+            return None, f"❌ Render error: {str(e)[:100]}"
 
     def _render_adjusted_stems_silent(self, params, key1_name, key2_name, detected_bpm, target_bpm, bpm_overridden, pitch_changed):
         """Render individual stems solo with all effects applied."""
@@ -988,7 +982,7 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio = gr.Audio(label="Output", elem_id="output_audio_player", scale=2)
+            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", scale=2)
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
