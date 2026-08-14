@@ -792,8 +792,15 @@ def create_app():
                         import soundfile as sf
                         from pathlib import Path
                         import tempfile
+                        import numpy as np
 
                         audio_array, sr = f
+                        # Ensure audio is in the right format for soundfile
+                        audio_array = np.asarray(audio_array, dtype=np.float32)
+                        if audio_array.ndim == 1:
+                            # Mono audio - reshape to (samples, 1) for soundfile
+                            audio_array = audio_array.reshape(-1, 1)
+
                         # Save to temporary WAV file for processing
                         temp_dir = Path(tempfile.gettempdir()) / "stem_mashup_upload"
                         temp_dir.mkdir(exist_ok=True)
@@ -840,8 +847,15 @@ def create_app():
                             import soundfile as sf
                             from pathlib import Path
                             import tempfile
+                            import numpy as np
 
                             audio_array, sr = f
+                            # Ensure audio is in the right format for soundfile
+                            audio_array = np.asarray(audio_array, dtype=np.float32)
+                            if audio_array.ndim == 1:
+                                # Mono audio - reshape to (samples, 1) for soundfile
+                                audio_array = audio_array.reshape(-1, 1)
+
                             # Save to temporary WAV file for processing
                             temp_dir = Path(tempfile.gettempdir()) / "stem_mashup_upload"
                             temp_dir.mkdir(exist_ok=True)
