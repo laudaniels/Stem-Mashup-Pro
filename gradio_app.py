@@ -962,13 +962,21 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
 
+        def preview_and_update():
+            audio_path, status = state.preview()
+            return gr.update(value=audio_path), status
+
         preview_btn.click(
-            lambda: state.preview(),
+            preview_and_update,
             outputs=[output_audio, render_status]
         )
 
+        def render_and_update():
+            audio_path, status = state.render()
+            return gr.update(value=audio_path), status
+
         render_btn.click(
-            lambda: state.render(),
+            render_and_update,
             outputs=[output_audio, render_status]
         )
 
