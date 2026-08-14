@@ -716,7 +716,7 @@ def create_app():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
-                    audio_player = gr.Audio(label="Load & Preview", interactive=True)
+                    audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True, format="auto")
                     audio_players.append(audio_player)
                     file_inputs.append(audio_player)
 
@@ -982,8 +982,8 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio = gr.Audio(label="Output", elem_id="output_audio_player")
-            render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=2)
+            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", scale=2, format="mp3")
+            render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
             render_files_zip = gr.File(label="📥 Download Render + Stems (ZIP)", type="filepath", scale=1, file_count="single", file_types=[".zip"], elem_id="render_files_zip")
