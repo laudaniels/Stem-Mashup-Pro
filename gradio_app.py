@@ -61,6 +61,7 @@ class StudioState:
         self._status_lock = Lock()
         self.sep_in_progress = False
         self.render_in_progress = False
+        self.render_counter = 0  # Counter for unique filenames
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -399,9 +400,10 @@ class StudioState:
             # Render the final remix with all slider settings to Audio folder
             temp_output = self.engine.render(params, preview=False)
 
-            # Convert to 16-bit WAV
+            # Convert to 16-bit WAV with unique counter
+            self.render_counter += 1
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            output_name = f"{output_name_base}_{timestamp}.wav"
+            output_name = f"{output_name_base}_{timestamp}_{self.render_counter}.wav"
             output = str(AUDIO_DIR / output_name)
 
             import subprocess
