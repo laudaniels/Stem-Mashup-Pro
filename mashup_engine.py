@@ -341,11 +341,11 @@ class MashupEngine:
         filter_complex += ";" + "".join(mixed_tracks)
         filter_complex += f"amix=inputs={len(mixed_tracks)}:duration=longest:normalize=0,alimiter=limit=0.95[final]"
 
-        output = str(BASE_DIR / ("preview_temp.mp3" if preview else "final_remix.mp3"))
+        output = str(BASE_DIR / ("preview_temp.wav" if preview else "final_remix.wav"))
         command = [self.ffmpeg, "-y", *inputs, "-filter_complex", filter_complex, "-map", "[final]"]
         if preview:
             command += ["-t", str(preview_duration)]
-        command += ["-c:a", "libmp3lame", "-q:a", "2", output]
+        command += ["-c:a", "pcm_s16le", output]
 
         # Run via Popen (not subprocess.run) and track the process so
         # stop_all() can kill it if the GUI is closed mid-encode.
