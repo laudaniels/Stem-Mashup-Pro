@@ -675,13 +675,13 @@ def create_app():
                     state.pitch_manually_changed[slot] = False
                     state.add_status(f"🗑️ Song {slot+1} removed")
                     status_text = state.get_status_text()
-                    return None, "—", "—", status_text
+                    return gr.update(), "—", "—", status_text
                 else:
                     msg, audio_path, _ = state.load_song(f, slot)
                     bpm_text = state.get_bpm_display(slot)
                     key_text = state.get_key_display(slot)
                     status_text = state.get_status_text()
-                    return audio_path, bpm_text, key_text, status_text
+                    return gr.update(), bpm_text, key_text, status_text
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
@@ -701,13 +701,13 @@ def create_app():
                             state.song_keys[slot] = None
                             state.pitch_manually_changed[slot] = False
                             state.add_status(f"🗑️ Song {slot+1} removed")
-                            return None, "—", "—", state.get_status_text()
+                            return gr.update(), "—", "—", state.get_status_text()
 
                         msg, audio_path, _ = state.load_song(f, slot)
                         bpm_text = state.get_bpm_display(slot)
                         key_text = state.get_key_display(slot)
                         status_text = state.get_status_text()
-                        return audio_path, bpm_text, key_text, status_text
+                        return gr.update(), bpm_text, key_text, status_text
                     return load_song2
 
                 file_input.change(
