@@ -57,7 +57,6 @@ class StudioState:
         self._status_lock = Lock()
         self.sep_in_progress = False
         self.render_in_progress = False
-        self.animation_frame = 0
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -249,19 +248,6 @@ class StudioState:
         except Exception as e:
             print(f"[Stems] ZIP creation error: {e}")
             self.add_status(f"❌ ZIP creation error: {e}")
-
-    def get_animated_status(self):
-        """Return status with animated spinner if stem separation is running."""
-        frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        status = self.get_status_text()
-
-        if self.sep_in_progress:
-            frame = frames[self.animation_frame % len(frames)]
-            self.animation_frame += 1
-            if "Running Demucs" in status:
-                return f"{status} {frame}"
-
-        return status
 
     def update_slider(self, key, value):
         self.sliders[key] = value
@@ -635,17 +621,13 @@ def create_app():
 
         # System status display with auto-refresh
         with gr.Row():
-            with gr.Column(scale=9):
-                separate_status = gr.Textbox(
-                    label="Status of Detecting and Separating the Tracks",
-                    value="",
-                    interactive=False,
-                    lines=6,
-                    elem_id="system_status_box"
-                )
-
-            with gr.Column(scale=1):
-                processing_indicator = gr.Markdown(value="", elem_id="processing_indicator", visible=False)
+            separate_status = gr.Textbox(
+                label="Status of Detecting and Separating the Tracks",
+                value="",
+                interactive=False,
+                lines=6,
+                elem_id="system_status_box"
+            )
 
             status_refresh_timer = gr.Timer(value=0.5, active=True)
 
@@ -910,16 +892,6 @@ def create_app():
             if stems_ready:
                 status_text += "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✨ Files analyzed and stems created, have fun Mixing! ✨\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-            # Show processing indicator only for stem separation (not for rendering)
-            if state.sep_in_progress:
-                # Animated processing indicator
-                frames = ["⚙️", "🔄", "⚡"]
-                frame = frames[state.animation_frame % len(frames)]
-                processing_update = gr.update(value=f"**{frame} Processing...**", visible=True)
-                state.animation_frame += 1
-            else:
-                processing_update = gr.update(visible=False)
-
             # Only update status textbox if content actually changed
             if status_text == last_status_text[0]:
                 status_update = gr.update()
@@ -969,7 +941,7 @@ def create_app():
 
             updates = [status_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
-                      pitch1_update, pitch2_update, processing_update]
+                      pitch1_update, pitch2_update]
             # Update all sliders
             for slider in slider_refs.values():
                 updates.append(gr.update(interactive=stems_ready))
@@ -989,7 +961,7 @@ def create_app():
 
         status_refresh_timer.tick(
             update_all,
-            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1], processing_indicator] + slider_outputs + [stems_download, render_files_zip]
+            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip]
         )
 
         # CSS for styling (script is now in head parameter)
@@ -1011,13 +983,6 @@ def create_app():
             overflow-y: auto !important;
             scroll-behavior: smooth !important;
             resize: none !important;
-        }
-        #processing_indicator {
-            align-self: flex-start;
-            margin-top: 35px;
-            padding-left: 15px;
-            font-size: 20px;
-            white-space: nowrap;
         }
         [data-testid="timer"] {
             display: none !important;
