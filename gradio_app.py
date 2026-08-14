@@ -404,7 +404,7 @@ class StudioState:
             return None, f"❌ Render error: {str(e)[:100]}"
 
     def _render_adjusted_stems_silent(self, params, key1_name, key2_name, detected_bpm, target_bpm, bpm_overridden, pitch_changed):
-        """Render individual stems with pitch/tempo adjustments (silent, no status messages)."""
+        """Render individual stems solo with all effects applied."""
         try:
             stems_adjusted_dir = AUDIO_DIR / "stems_bpm-key-adjusted"
             # Clear old stems before creating new ones
@@ -413,44 +413,49 @@ class StudioState:
                 shutil.rmtree(stems_adjusted_dir)
             stems_adjusted_dir.mkdir(exist_ok=True)
 
-            bpms = self.get_effective_bpms()
+            stem_types = ["vocals", "beats", "bass", "other"]
+            bpm_value = int(target_bpm) if target_bpm and target_bpm > 0 else int(detected_bpm) if detected_bpm else 0
 
             for slot in range(2):
                 if not self.stem_paths[slot]:
                     continue
 
                 song_name = Path(self.song_paths[slot]).stem
-                stem_dict = self.stem_paths[slot]
-                song_bpm = bpms[slot]
-
-                if not song_bpm:
-                    continue
-
-                # Get pitch shift value
-                pitch_shift = self.sliders.get(f"s{slot}_pitch_shift", 0.0)
-                bpm_value = int(target_bpm) if bpm_overridden else int(detected_bpm) if detected_bpm else 0
                 current_key = key1_name if slot == 0 else key2_name
 
-                # Build stem filename suffix based on whether values were changed
-                if not (pitch_changed or bpm_overridden):
-                    # No changes - show "original" with detected key
-                    suffix = f"original_{current_key}_{bpm_value}bpm"
-                else:
-                    # Show actual values (detected or modified)
+                # Render each stem solo (mute others, apply all effects)
+                for stem_type in stem_types:
+                    # Create params copy with all stem volumes set to 0 except this one
+                    solo_params = params.copy()
+                    solo_params["sliders"] = params["sliders"].copy()
+
+                    # Mute all stems except the current one
+                    for s in range(2):
+                        for st in stem_types:
+                            solo_params["sliders"][f"s{s}_{st}_vol"] = 0.0
+
+                    # Unmute only this stem
+                    solo_params["sliders"][f"s{slot}_{stem_type}_vol"] = 1.0
+
+                    # Render the solo stem with all effects applied
+                    temp_output = self.engine.render(solo_params, preview=False)
+
+                    # Save as WAV with proper naming
                     suffix = f"{current_key}_{bpm_value}bpm"
+                    output_path = stems_adjusted_dir / f"Song{slot+1}_{song_name}_{stem_type}_{suffix}.wav"
 
-                speed_factor = self.sliders.get(f"s{slot}_speed", 1.0)
-
-                for stem_name, stem_path in stem_dict.items():
-                    output_path = stems_adjusted_dir / f"Song{slot+1}_{song_name}_{stem_name}_{suffix}.wav"
-                    self.engine.process_stem(
-                        stem_path,
-                        str(output_path),
-                        pitch_shift=pitch_shift,
-                        speed=speed_factor,
-                        target_bpm=params.get("target_bpm"),
-                        song_bpm=song_bpm
+                    # Convert MP3 to WAV
+                    import subprocess
+                    subprocess.run(
+                        ["ffmpeg", "-i", temp_output, "-q:a", "0", "-map", "a", str(output_path), "-y"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=True
                     )
+
+                    # Clean up temp file
+                    Path(temp_output).unlink()
+
         except Exception as e:
             print(f"[Render] Stem adjustment error: {e}")
 
