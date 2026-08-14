@@ -369,14 +369,49 @@ class MashupEngine:
             raise RuntimeError(f"FFmpeg could not make the mix:\n{detail[-1200:]}")
 
         if preview:
-            # A new preview always replaces whatever is currently playing --
-            # otherwise every click of LIVE PREVIEW stacks another ffplay on
-            # top of the last one, with no way to stop them from the GUI.
+            # Stop any currently playing preview
             MashupEngine.stop_preview()
-            try:
-                MashupEngine._preview_process = subprocess.Popen(
-                    [self.ffplay, "-nodisp", "-autoexit", "-t", str(preview_duration), output],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except FileNotFoundError:
-                pass  # The preview file was made; only automatic playback is unavailable.
+            # Don't auto-play with ffplay - let the browser player handle it
         return output
+
+    def process_stem(self, input_stem, output_path, pitch_shift=0.0, speed=1.0, target_bpm=None, song_bpm=None):
+        """Apply pitch and tempo adjustments to a stem file (no mixing, just effects)."""
+        normalize = f"aformat=sample_rates={self.TARGET_SAMPLE_RATE}:channel_layouts=stereo"
+        chain = "[0:a]" + normalize
+
+        # Calculate tempo ratio for BPM matching
+        tempo_ratio = (target_bpm / song_bpm) if (target_bpm and song_bpm) else 1.0
+        speed = speed * tempo_ratio
+
+        # Apply pitch shift
+        if abs(pitch_shift) > 0.05:
+            rate = self.TARGET_SAMPLE_RATE
+            pitch_ratio = 2 ** (pitch_shift / 12)
+            chain += f",asetrate={rate}*{pitch_ratio},aresample={rate}"
+
+        # Apply tempo/speed
+        if abs(speed - 1.0) > 0.05:
+            chain += "," + self._atempo_chain(speed)
+
+        chain += "[out]"
+
+        command = [self.ffmpeg, "-y", "-i", input_stem, "-filter_complex", chain, "-map", "[out]", "-c:a", "libmp3lame", "-q:a", "2", output_path]
+
+        try:
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except FileNotFoundError as error:
+            raise RuntimeError("FFmpeg is not installed or is not in PATH.") from error
+
+        MashupEngine._active_encode_processes.append(proc)
+        try:
+            stdout, stderr = proc.communicate(timeout=300)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+        finally:
+            if proc in MashupEngine._active_encode_processes:
+                MashupEngine._active_encode_processes.remove(proc)
+
+        if proc.returncode != 0:
+            detail = (stderr or "").strip() or "FFmpeg failed without an error message."
+            raise RuntimeError(f"FFmpeg could not process stem:\n{detail[-500:]}")
