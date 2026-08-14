@@ -659,7 +659,7 @@ def create_app():
 
         # Progress bar for detection/separation
         with gr.Row():
-            progress_bar = gr.HTML(value="", elem_id="detection_progress_bar")
+            progress_bar = gr.HTML(value='<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; overflow: hidden;"></div>', elem_id="detection_progress_bar")
 
         # System status display with auto-refresh
         with gr.Row():
