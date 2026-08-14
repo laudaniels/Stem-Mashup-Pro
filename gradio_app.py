@@ -722,7 +722,7 @@ def create_app():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
-                    audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True, format="auto")
+                    audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True)
                     audio_players.append(audio_player)
                     file_inputs.append(audio_player)
 
