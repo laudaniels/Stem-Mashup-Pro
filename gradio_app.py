@@ -374,14 +374,28 @@ class StudioState:
                 return
 
             self.add_status("🎵 Auto-generating preview mix with current settings...")
-            audio_path, msg = self.preview()
 
-            if audio_path:
-                self.last_render_path = audio_path
-                self.add_status("✨ Preview ready! Click play to listen.")
-                print(f"[Auto-Preview] Generated: {Path(audio_path).name}")
-            else:
-                self.add_status(f"Preview not ready: {msg}")
+            # Generate preview with engine
+            params = self.build_params()
+            if not params["songs"][0] or not params["songs"][1]:
+                self.add_status("Cannot preview: songs not loaded")
+                return
+
+            temp_preview = self.engine.render(params, preview=True, preview_duration=60)
+
+            # Save with unique name so it doesn't get overwritten
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            preview_filename = f"preview_{timestamp}.mp3"
+            preview_path = str(AUDIO_DIR / preview_filename)
+
+            import shutil
+            shutil.move(temp_preview, preview_path)
+
+            # Store the persistent preview path
+            self.last_render_path = preview_path
+            self.add_status("✨ Preview ready! Click play to listen.")
+            print(f"[Auto-Preview] Generated: {Path(preview_path).name}")
+
         except Exception as e:
             self.add_status(f"❌ Auto-preview error: {str(e)[:100]}")
             print(f"[Auto-Preview] Error: {e}")
@@ -447,6 +461,11 @@ class StudioState:
                 render_zips = sorted(AUDIO_DIR.glob("render_output_*.zip"), key=lambda p: p.stat().st_mtime, reverse=True)
                 for old_zip in render_zips[3:]:  # Keep 3 most recent
                     old_zip.unlink()
+
+                # Clean up old preview files (keep only most recent)
+                preview_files = sorted(AUDIO_DIR.glob("preview_*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
+                for old_preview in preview_files[1:]:  # Keep only 1 most recent
+                    old_preview.unlink()
             except Exception as e:
                 print(f"[Render] Cleanup warning: {e}")
 
