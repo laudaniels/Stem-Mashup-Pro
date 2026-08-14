@@ -382,13 +382,23 @@ class StudioState:
             # Render the final remix with all slider settings to Audio folder
             temp_output = self.engine.render(params, preview=False)
 
-            # Move to Audio folder with proper naming
+            # Convert to 16-bit WAV
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            output_name = f"{output_name_base}_{timestamp}.mp3"
+            output_name = f"{output_name_base}_{timestamp}.wav"
             output = str(AUDIO_DIR / output_name)
-            Path(temp_output).rename(output)
-            # Ensure file is readable
+
+            import subprocess
             import os
+            subprocess.run(
+                ["ffmpeg", "-i", temp_output, "-acodec", "pcm_s16le", output, "-y"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True
+            )
+
+            # Clean up temp file
+            Path(temp_output).unlink()
+            # Ensure file is readable
             os.chmod(output, 0o644)
 
             # Create adjusted stems (pitch/tempo only, no mixing)
@@ -444,10 +454,10 @@ class StudioState:
                     suffix = f"{current_key}_{bpm_value}bpm"
                     output_path = stems_adjusted_dir / f"Song{slot+1}_{song_name}_{stem_type}_{suffix}.wav"
 
-                    # Convert MP3 to 24-bit PCM WAV (lossless, best quality)
+                    # Convert to 16-bit PCM WAV
                     import subprocess
                     subprocess.run(
-                        ["ffmpeg", "-i", temp_output, "-acodec", "pcm_s24le", "-ar", "48000", str(output_path), "-y"],
+                        ["ffmpeg", "-i", temp_output, "-acodec", "pcm_s16le", str(output_path), "-y"],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         check=True
