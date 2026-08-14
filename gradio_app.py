@@ -20,9 +20,12 @@ import gradio as gr
 import json
 import threading
 from threading import Lock
+from datetime import datetime
 from mashup_engine import MashupEngine
 
 BASE_DIR = Path(__file__).resolve().parent
+AUDIO_DIR = BASE_DIR / "Audio"
+AUDIO_DIR.mkdir(exist_ok=True)
 
 presets_dir = BASE_DIR / "presets"
 presets_dir.mkdir(exist_ok=True)
@@ -52,6 +55,7 @@ class StudioState:
         self.status_messages = []
         self._status_lock = Lock()
         self.sep_in_progress = False
+        self.render_in_progress = False
         self.animation_frame = 0
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
@@ -89,7 +93,7 @@ class StudioState:
         """Add a status message (visible in UI)."""
         with self._status_lock:
             self.status_messages.append(message)
-            if len(self.status_messages) > 6:
+            if len(self.status_messages) > 30:
                 self.status_messages.pop(0)
         print(message)
 
@@ -133,6 +137,10 @@ class StudioState:
                         stem_set = self.engine.separate_stems([file_obj.name])
                         self.stem_paths[slot] = stem_set[0]
                         self.add_status(f"✓ Song {slot+1}: Stems ready (Vocals, Beats, Bass, Other)")
+
+                        # Create ZIP when both songs' stems are ready
+                        if self.stems_ready():
+                            self._create_stems_zip()
                     except Exception as sep_e:
                         self.add_status(f"❌ Song {slot+1}: Stem separation error: {sep_e}")
 
@@ -221,7 +229,9 @@ class StudioState:
         """Create ZIP file of stems (called automatically after separation)."""
         import zipfile
         try:
-            zip_path = BASE_DIR / "stems_export.zip"
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            zip_filename = f"stems_export_original_{timestamp}.zip"
+            zip_path = AUDIO_DIR / zip_filename
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for slot, stem_dict in enumerate(self.stem_paths):
                     if stem_dict:
@@ -229,7 +239,7 @@ class StudioState:
                         for stem_name, stem_path in stem_dict.items():
                             arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
                             zf.write(stem_path, arcname=arcname)
-            self.add_status(f"📦 ZIP ready: stems_export.zip")
+            self.add_status(f"📦 ZIP ready: {zip_filename}")
             print(f"[Stems] ZIP auto-created: {zip_path}")
         except Exception as e:
             print(f"[Stems] ZIP creation error: {e}")
@@ -276,10 +286,12 @@ class StudioState:
         """Update key override from dropdown selection."""
         if value and value in KEY_NAMES:
             self.key_overrides[slot] = KEY_NAMES.index(value)
+            self.pitch_manually_changed[slot] = False  # Reset so pitch dropdown updates
             print(f"[Key Override] Song {slot+1} = {value}")
             self.add_status(f"🎹 Song {slot+1} key override: {value}")
         else:
             self.key_overrides[slot] = -1
+            self.pitch_manually_changed[slot] = False  # Reset so pitch dropdown updates
             print(f"[Key Override] Song {slot+1} = auto-detect")
             self.add_status(f"🎹 Song {slot+1} key override: auto-detect")
 
@@ -335,15 +347,175 @@ class StudioState:
             return None, f"Preview error: {str(e)[:100]}"
 
     def render(self):
-        """Render the full remix."""
+        """Render the full remix and adjusted stems."""
         try:
             params = self.build_params()
             if not params["songs"][0] or not params["songs"][1]:
                 return None, "Load Song 1 and Song 2 before rendering."
-            output = self.engine.render(params, preview=False)
-            return output, f"Remix saved as: {output}"
+
+            self.render_in_progress = True
+
+            # Get the actual settings used
+            keys = self.get_effective_keys()
+            bpms = self.get_effective_bpms()
+            target_bpm = params.get("target_bpm") or 0
+            bpm_overridden = target_bpm > 0
+
+            # Check if pitch has been shifted (using the sliders, not just key overrides)
+            pitch_shift_1 = abs(self.sliders.get("s0_pitch_shift", 0.0)) > 0.05
+            pitch_shift_2 = abs(self.sliders.get("s1_pitch_shift", 0.0)) > 0.05
+            pitch_changed = pitch_shift_1 or pitch_shift_2
+
+            # Get key and BPM display values
+            key1_name = self.engine._key_to_note(keys[0]) if keys[0] >= 0 else "?"
+            key2_name = self.engine._key_to_note(keys[1]) if keys[1] >= 0 else "?"
+            detected_bpm = int(bpms[0]) if bpms[0] else 0  # Use Song 1's BPM as reference
+
+            # Build filename with actual settings or "original" if nothing changed
+            if not (pitch_changed or bpm_overridden):
+                # No changes - show "original" with the original detected values
+                output_name_base = f"final_remix_original_{key1_name}-{key2_name}_{detected_bpm}bpm"
+            else:
+                # Show what was changed
+                bpm_str = f"{int(target_bpm)}bpm" if bpm_overridden else f"{detected_bpm}bpm"
+                output_name_base = f"final_remix_{key1_name}-{key2_name}_{bpm_str}"
+
+            # Render the final remix with all slider settings to Audio folder
+            temp_output = self.engine.render(params, preview=False)
+
+            # Move to Audio folder with proper naming
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            output_name = f"{output_name_base}_{timestamp}.mp3"
+            output = str(AUDIO_DIR / output_name)
+            Path(temp_output).rename(output)
+
+            # Create adjusted stems (pitch/tempo only, no mixing)
+            self._render_adjusted_stems_silent(params, key1_name, key2_name, detected_bpm, target_bpm, bpm_overridden, pitch_changed)
+
+            # Create ZIP file with all outputs
+            self._create_render_zip(output, output_name_base, timestamp)
+
+            self.render_in_progress = False
+            return output, f"✨ Render complete! Remix: {output_name}\n📦 Download package ready in Audio/ folder"
         except Exception as e:
-            return None, f"Render error: {str(e)[:100]}"
+            self.render_in_progress = False
+            return None, f"❌ Render error: {str(e)[:100]}"
+
+    def _render_adjusted_stems_silent(self, params, key1_name, key2_name, detected_bpm, target_bpm, bpm_overridden, pitch_changed):
+        """Render individual stems with pitch/tempo adjustments (silent, no status messages)."""
+        try:
+            stems_adjusted_dir = AUDIO_DIR / "stems_bpm-key-adjusted"
+            stems_adjusted_dir.mkdir(exist_ok=True)
+
+            bpms = self.get_effective_bpms()
+
+            for slot in range(2):
+                if not self.stem_paths[slot]:
+                    continue
+
+                song_name = Path(self.song_paths[slot]).stem
+                stem_dict = self.stem_paths[slot]
+                song_bpm = bpms[slot]
+
+                if not song_bpm:
+                    continue
+
+                # Get pitch shift value
+                pitch_shift = self.sliders.get(f"s{slot}_pitch_shift", 0.0)
+                bpm_value = int(target_bpm) if bpm_overridden else int(detected_bpm) if detected_bpm else 0
+                current_key = key1_name if slot == 0 else key2_name
+
+                # Build stem filename suffix based on whether values were changed
+                if not (pitch_changed or bpm_overridden):
+                    # No changes - show "original" with detected key
+                    suffix = f"original_{current_key}_{bpm_value}bpm"
+                else:
+                    # Show actual values (detected or modified)
+                    suffix = f"{current_key}_{bpm_value}bpm"
+
+                speed_factor = self.sliders.get(f"s{slot}_speed", 1.0)
+
+                for stem_name, stem_path in stem_dict.items():
+                    output_path = stems_adjusted_dir / f"Song{slot+1}_{song_name}_{stem_name}_{suffix}.wav"
+                    self.engine.process_stem(
+                        stem_path,
+                        str(output_path),
+                        pitch_shift=pitch_shift,
+                        speed=speed_factor,
+                        target_bpm=params.get("target_bpm"),
+                        song_bpm=song_bpm
+                    )
+        except Exception as e:
+            print(f"[Render] Stem adjustment error: {e}")
+
+    def _render_adjusted_stems(self, params):
+        """Render individual stems with pitch/tempo adjustments (no mixing)."""
+        try:
+            stems_adjusted_dir = AUDIO_DIR / "stems_bpm-key-adjusted"
+            stems_adjusted_dir.mkdir(exist_ok=True)
+
+            # Process each song's stems
+            bpms = self.get_effective_bpms()
+            for slot in range(2):
+                if not self.stem_paths[slot]:
+                    continue
+
+                song_name = Path(self.song_paths[slot]).stem
+                stem_dict = self.stem_paths[slot]
+                song_bpm = bpms[slot]
+
+                # Only process if we have a valid BPM
+                if not song_bpm:
+                    self.add_status(f"⚠️ Skipping Song {slot+1} stems: no BPM detected")
+                    continue
+
+                pitch_shift = self.sliders.get(f"s{slot}_pitch_shift", 0.0)
+                speed_factor = self.sliders.get(f"s{slot}_speed", 1.0)
+
+                # Process each stem type
+                for stem_name, stem_path in stem_dict.items():
+                    output_path = stems_adjusted_dir / f"Song{slot+1}_{song_name}_{stem_name}_bpm-key-adjusted.wav"
+
+                    # Use engine to apply pitch and tempo adjustments
+                    self.engine.process_stem(
+                        stem_path,
+                        str(output_path),
+                        pitch_shift=pitch_shift,
+                        speed=speed_factor,
+                        target_bpm=params.get("target_bpm"),
+                        song_bpm=song_bpm
+                    )
+                    self.add_status(f"✓ Stem: {output_path.name}")
+
+            self.add_status(f"✓ All stems processed and ready")
+        except Exception as e:
+            self.add_status(f"❌ Stem processing error: {e}")
+            print(f"[Stems] Adjustment error: {e}")
+
+    def _create_render_zip(self, remix_path, output_name_base, timestamp):
+        """Create ZIP file with remix and adjusted stems."""
+        import zipfile
+        try:
+            zip_filename = f"render_output_{output_name_base}_{timestamp}.zip"
+            zip_path = AUDIO_DIR / zip_filename
+            stems_adjusted_dir = AUDIO_DIR / "stems_bpm-key-adjusted"
+
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                # Add the final remix
+                if Path(remix_path).exists():
+                    remix_filename = f"01_final_remix_{output_name_base}_{timestamp}.mp3"
+                    zf.write(remix_path, arcname=remix_filename)
+
+                # Add all adjusted stems
+                if stems_adjusted_dir.exists():
+                    for stem_file in sorted(stems_adjusted_dir.glob("*.wav")):
+                        zf.write(stem_file, arcname=f"02_stems/{stem_file.name}")
+
+            self.add_status(f"✓ Download package ready: {zip_filename}")
+            print(f"[Render] ZIP created: {zip_path}")
+        except Exception as e:
+            print(f"[Render] ZIP creation error: {e}")
+            self.add_status(f"⚠️ ZIP creation: {e}")
 
     def download_stems(self):
         """Create a ZIP file of all separated stems."""
@@ -355,7 +527,9 @@ class StudioState:
             return None, "Separate stems first."
 
         try:
-            zip_path = BASE_DIR / "stems_export.zip"
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            zip_filename = f"stems_export_original_{timestamp}.zip"
+            zip_path = AUDIO_DIR / zip_filename
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for slot, stem_dict in enumerate(self.stem_paths):
                     if stem_dict:
@@ -363,9 +537,9 @@ class StudioState:
                         for stem_name, stem_path in stem_dict.items():
                             arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
                             zf.write(stem_path, arcname=arcname)
-            self.add_status(f"📦 Stems exported: {zip_path.name}")
+            self.add_status(f"📦 Stems exported: {zip_filename}")
             print(f"[Stems] ZIP created: {zip_path}")
-            return str(zip_path), f"Stems downloaded: stems_export.zip"
+            return str(zip_path), f"Stems downloaded: {zip_filename}"
         except Exception as e:
             self.add_status(f"❌ Stem export error: {e}")
             print(f"[Stems] Export error: {e}")
@@ -459,51 +633,35 @@ def create_app():
 
         # System status display with auto-refresh
         with gr.Row():
-            separate_status = gr.Textbox(
-                label="System Status",
-                value="",
-                interactive=False,
-                lines=6,
-                max_lines=6
-            )
+            with gr.Column(scale=9):
+                separate_status = gr.Textbox(
+                    label="Status of Detecting and Separating the Tracks",
+                    value="",
+                    interactive=False,
+                    lines=6,
+                    elem_id="system_status_box"
+                )
+
+            with gr.Column(scale=1):
+                processing_indicator = gr.Markdown(value="", elem_id="processing_indicator", visible=False)
+
             status_refresh_timer = gr.Timer(value=0.5, active=True)
 
-            def update_status_display():
-                status_text = state.get_status_text()
-                # Add progress bar if stems are being processed
-                if not state.stems_ready() and (state.sep_in_progress or any(state.song_bpms)):
-                    fill = int((state.animation_frame % 20) * 5)  # Animated fill
-                    bar = "█" * fill + "░" * (20 - fill)
-                    status_text += f"\n\n⚙️ Processing... [{bar}]"
-                # Show completion message when stems are ready
-                elif state.stems_ready():
-                    status_text += "\n\n✨ Files analyzed and stems created, have fun Mixing!"
-                return gr.update(value=status_text)
-
-            status_refresh_timer.tick(
-                update_status_display,
-                outputs=[separate_status]
-            )
 
         with gr.Row():
-            stems_download = gr.File(label="📥 Download Stems (ZIP)", type="filepath", interactive=False, scale=1, container=False)
-
-            def get_stems_zip():
-                zip_path = BASE_DIR / "stems_export.zip"
-                if zip_path.exists():
-                    return str(zip_path)
-                return None
+            stems_download = gr.File(label="📥 Download Stems (ZIP)", type="filepath", scale=1, file_count="single", file_types=[".zip"], elem_id="stems_download_file")
 
             # Update download file when stems are ready
-            def update_download():
+            def update_stems_download():
                 if state.stems_ready():
-                    return gr.update(interactive=True, value=get_stems_zip())
-                return gr.update(interactive=False, value=None)
+                    # Find the most recent stems ZIP file by modification time
+                    stem_files = list(AUDIO_DIR.glob("stems_export_original_*.zip"))
+                    if stem_files:
+                        # Sort by modification time (newest first)
+                        newest = max(stem_files, key=lambda p: p.stat().st_mtime)
+                        return gr.update(value=str(newest), interactive=False)
+                return gr.update(value=None, interactive=False)
 
-            status_refresh_timer.tick(
-                update_download,
-                outputs=[stems_download]
-            )
 
         def make_load_callback(slot):
             def load_and_update(f):
@@ -715,11 +873,25 @@ def create_app():
 
         with gr.Row():
             preview_btn = gr.Button("▶ LIVE PREVIEW", size="lg", scale=1, interactive=False)
-            render_btn = gr.Button("🎛️ RENDER REMIX", size="lg", scale=1, interactive=False)
+            render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", show_download_button=True)
+            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player")
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=2)
+
+        with gr.Row():
+            render_files_zip = gr.File(label="📥 Download Render + Stems (ZIP)", type="filepath", scale=1, file_count="single", file_types=[".zip"], elem_id="render_files_zip")
+
+            # Update download when files are ready
+            def update_render_download():
+                # Find the most recent render ZIP file by modification time
+                render_files = list(AUDIO_DIR.glob("render_output_*.zip"))
+                if render_files:
+                    # Sort by modification time (newest first)
+                    newest = max(render_files, key=lambda p: p.stat().st_mtime)
+                    return gr.update(value=str(newest), interactive=False)
+                return gr.update(value=None, interactive=False)
+
 
         preview_btn.click(
             lambda: state.preview(),
@@ -731,10 +903,34 @@ def create_app():
             outputs=[output_audio, render_status]
         )
 
+        # Cache for status text to avoid unnecessary updates
+        last_status_text = [None]
+
         # Enable controls when stems are ready + animated status + pitch suggestion + BPM/Key displays + pitch dropdowns
         def refresh_status_and_controls():
-            status_text = state.get_animated_status()
+            status_text = state.get_status_text()  # Get status without animation
             stems_ready = state.stems_ready()
+
+            # Show completion message when stems are ready
+            if stems_ready:
+                status_text += "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✨ Files analyzed and stems created, have fun Mixing! ✨\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            # Show processing indicator only for stem separation (not for rendering)
+            if state.sep_in_progress:
+                # Animated processing indicator
+                frames = ["⚙️", "🔄", "⚡"]
+                frame = frames[state.animation_frame % len(frames)]
+                processing_update = gr.update(value=f"**{frame} Processing...**", visible=True)
+                state.animation_frame += 1
+            else:
+                processing_update = gr.update(visible=False)
+
+            # Only update status textbox if content actually changed
+            if status_text == last_status_text[0]:
+                status_update = gr.update()
+            else:
+                last_status_text[0] = status_text
+                status_update = gr.update(value=status_text)
 
             # Get BPM and Key displays for both songs
             bpm1_text = state.get_bpm_display(0)
@@ -776,35 +972,179 @@ def create_app():
                 pitch_text = (f"{abs_diff} steps: Shift S2 {diff:+d} semitones to {song1_key}, "
                              f"or middle ({mid_key}): S1 {mid_shift_s1:+.1f}, S2 {mid_shift_s2:+.1f}")
 
-            updates = [status_text, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), pitch_text,
+            updates = [status_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
-                      pitch1_update, pitch2_update]
+                      pitch1_update, pitch2_update, processing_update]
             # Update all sliders
             for slider in slider_refs.values():
                 updates.append(gr.update(interactive=stems_ready))
             return updates
 
         slider_outputs = list(slider_refs.values())
+
+        # Single timer callback with all outputs (stems, render, status, controls)
+        def update_all():
+            # Call all three update functions
+            status_result = refresh_status_and_controls()
+            stems_result = update_stems_download()
+            render_result = update_render_download()
+
+            # Combine all results: status outputs + stems download + render download
+            return status_result + [stems_result, render_result]
+
         status_refresh_timer.tick(
-            refresh_status_and_controls,
-            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs
+            update_all,
+            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1], processing_indicator] + slider_outputs + [stems_download, render_files_zip]
         )
 
         # Add JavaScript to disable autoplay on the output audio player
+        # and CSS to fix stems download window height and preserve scroll
         gr.HTML("""
+        <style>
+        #stems_download_file {
+            min-height: 120px !important;
+            height: 120px !important;
+        }
+        #stems_download_file .block {
+            height: 100% !important;
+        }
+        #system_status_box {
+            max-height: 180px !important;
+        }
+        #system_status_box textarea {
+            height: 140px !important;
+            max-height: 140px !important;
+            overflow-y: auto !important;
+            scroll-behavior: smooth !important;
+            resize: none !important;
+        }
+        #processing_indicator {
+            align-self: flex-start;
+            margin-top: 35px;
+            padding-left: 15px;
+            font-size: 20px;
+            white-space: nowrap;
+        }
+        /* Hide timer component */
+        [data-testid="timer"] {
+            display: none !important;
+        }
+        .gradio-timer {
+            display: none !important;
+        }
+        </style>
         <script>
-        function disableAudioAutoplay() {
-            const audioPlayers = document.querySelectorAll('#output_audio_player audio');
-            audioPlayers.forEach(player => {
+        let lastScrollValue = "";
+
+        function scrollStatusBoxToBottom() {
+            const statusBox = document.getElementById('system_status_box');
+            if (statusBox) {
+                const textarea = statusBox.querySelector('textarea');
+                if (textarea) {
+                    // Scroll multiple times with increasing delays to ensure it happens
+                    textarea.scrollTop = textarea.scrollHeight;
+                    setTimeout(() => textarea.scrollTop = textarea.scrollHeight, 10);
+                    setTimeout(() => textarea.scrollTop = textarea.scrollHeight, 50);
+                    setTimeout(() => textarea.scrollTop = textarea.scrollHeight, 100);
+                }
+            }
+        }
+
+        // Scroll to bottom on load
+        document.addEventListener('DOMContentLoaded', scrollStatusBoxToBottom);
+
+        // Watch for changes to the status box and scroll to bottom
+        const statusObserver = new MutationObserver(() => {
+            // Delay scroll to ensure DOM is updated
+            setTimeout(scrollStatusBoxToBottom, 50);
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusBox = document.getElementById('system_status_box');
+            if (statusBox) {
+                const textarea = statusBox.querySelector('textarea');
+                if (textarea) {
+                    // Listen for all possible change events
+                    textarea.addEventListener('input', scrollStatusBoxToBottom, true);
+                    textarea.addEventListener('change', scrollStatusBoxToBottom, true);
+
+                    // Observe the parent container for changes
+                    statusObserver.observe(statusBox, {
+                        characterData: true,
+                        subtree: true,
+                        childList: true,
+                        attributes: true,
+                        attributeOldValue: true,
+                        characterDataOldValue: true
+                    });
+                }
+            }
+        });
+
+        // Aggressive periodic check every 50ms - catches all Gradio updates
+        setInterval(() => {
+            const statusBox = document.getElementById('system_status_box');
+            if (statusBox) {
+                const textarea = statusBox.querySelector('textarea');
+                if (textarea && textarea.value !== lastScrollValue) {
+                    lastScrollValue = textarea.value;
+                    // Multiple scroll attempts to guarantee it works
+                    scrollStatusBoxToBottom();
+                    setTimeout(scrollStatusBoxToBottom, 10);
+                }
+            }
+        }, 50);
+
+        let currentlyPlaying = null;
+
+        function setupAudioControls() {
+            const allAudioPlayers = document.querySelectorAll('audio');
+            allAudioPlayers.forEach(player => {
+                // Disable autoplay completely
                 player.autoplay = false;
                 player.removeAttribute('autoplay');
+                player.pause();
+
+                // Remove any existing listeners by cloning the element
+                if (player._audioControlsInitialized) {
+                    return;
+                }
+                player._audioControlsInitialized = true;
+
+                // When this player starts, pause all others
+                player.addEventListener('play', () => {
+                    if (currentlyPlaying && currentlyPlaying !== player) {
+                        currentlyPlaying.pause();
+                    }
+                    currentlyPlaying = player;
+                }, true);
+
+                // When this player stops, clear the reference
+                player.addEventListener('pause', () => {
+                    if (currentlyPlaying === player) {
+                        currentlyPlaying = null;
+                    }
+                });
+
+                player.addEventListener('ended', () => {
+                    if (currentlyPlaying === player) {
+                        currentlyPlaying = null;
+                    }
+                });
             });
         }
-        // Run on load and whenever audio elements change
-        document.addEventListener('DOMContentLoaded', disableAudioAutoplay);
-        const observer = new MutationObserver(disableAudioAutoplay);
-        observer.observe(document.body, { childList: true, subtree: true });
-        disableAudioAutoplay();
+
+        // Run on load
+        document.addEventListener('DOMContentLoaded', setupAudioControls);
+
+        // Watch for new audio elements
+        const audioObserver = new MutationObserver(() => {
+            setTimeout(setupAudioControls, 50);
+        });
+        audioObserver.observe(document.body, { childList: true, subtree: true });
+
+        // Also check periodically
+        setInterval(setupAudioControls, 300);
         </script>
         """)
 
