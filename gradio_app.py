@@ -716,7 +716,7 @@ def create_app():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
-                    audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True)
+                    audio_player = gr.Audio(label="Load & Preview", interactive=True)
                     audio_players.append(audio_player)
                     file_inputs.append(audio_player)
 
@@ -982,7 +982,7 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player")
+            output_audio = gr.Audio(label="Output", elem_id="output_audio_player")
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=2)
 
         with gr.Row():
