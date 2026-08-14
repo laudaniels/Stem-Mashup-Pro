@@ -1027,12 +1027,15 @@ def create_app():
                 last_status_text[0] = status_text
                 status_update = gr.update(value=status_text)
 
-            # Generate progress bar HTML - filling animation
+            # Generate progress indicator with SVG spinner
             if state.sep_in_progress:
-                # Calculate fill percentage (0-100%, cycling)
-                fill_pct = (state.animation_frame % 20) * 5
-                progress_html = f'<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; overflow: hidden; position: relative;"><div style="height: 100%; width: {fill_pct}%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 4px; transition: width 0.5s ease;"></div></div>'
-                state.animation_frame = (state.animation_frame + 1) % 20
+                progress_html = '''<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+                <svg width="20" height="20" viewBox="0 0 50 50" style="animation: spin 1s linear infinite;">
+                  <circle cx="25" cy="25" r="20" fill="none" stroke="#6366f1" stroke-width="4" stroke-dasharray="31.4 94.2" stroke-linecap="round"/>
+                </svg>
+                <span style="margin-left: 8px; font-size: 12px; color: #666; font-weight: 500;">Processing...</span>
+                </div>
+                <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>'''
                 progress_update = gr.update(value=progress_html)
             else:
                 # Reset to empty gray bar when not processing
