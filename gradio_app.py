@@ -1008,9 +1008,6 @@ def create_app():
             outputs=[cleanup_status]
         )
 
-        # Cache for status text to avoid unnecessary updates
-        last_status_text = [None]
-
         # Enable controls when stems are ready + animated status + pitch suggestion + BPM/Key displays + pitch dropdowns
         def refresh_status_and_controls():
             status_text = state.get_status_text()  # Get status without animation
@@ -1027,12 +1024,9 @@ def create_app():
                 state.animation_frame += 1
                 # Add spinner at the end of status text
                 status_text += f"\n{spinner} Processing..."
-                status_update = gr.update(value=status_text)
-            elif status_text != last_status_text[0]:
-                last_status_text[0] = status_text
-                status_update = gr.update(value=status_text)
-            else:
-                status_update = gr.update()
+
+            # Update status textbox
+            status_update = gr.update(value=status_text)
 
             # Get BPM and Key displays for both songs
             bpm1_text = state.get_bpm_display(0)
