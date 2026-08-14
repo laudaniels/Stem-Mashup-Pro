@@ -63,6 +63,7 @@ class StudioState:
         self.render_in_progress = False
         self.render_counter = 0  # Counter for unique filenames
         self.last_render_path = None  # Track the last render for display
+        self.animation_frame = 0  # For progress bar animation
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -1026,9 +1027,13 @@ def create_app():
                 last_status_text[0] = status_text
                 status_update = gr.update(value=status_text)
 
-            # Generate progress bar HTML
+            # Generate progress bar HTML - animated stripes
             if state.sep_in_progress:
-                progress_html = '''<style>@keyframes pw {0% {background-position: 0%} 100% {background-position: 200%}}</style><div style="width: 100%; height: 24px; background: #f0f0f0; border-radius: 4px; overflow: hidden;"><div style="height: 100%; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #6366f1 100%); background-size: 200% 100%; animation: pw 2s linear infinite; border-radius: 4px;"></div></div>'''
+                # Create animated striped pattern
+                progress_html = f'''<div style="width: 100%; height: 24px; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 25%, #6366f1 50%, #8b5cf6 75%, #6366f1 100%); background-size: 100% 100%; border-radius: 4px; position: relative; overflow: hidden;">
+                <div style="position: absolute; top: 0; left: {(state.animation_frame % 10) * 10}%; width: 20%; height: 100%; background: rgba(255,255,255,0.2); border-radius: 4px;"></div>
+                </div>'''
+                state.animation_frame = (state.animation_frame + 1) % 100
                 progress_update = gr.update(value=progress_html)
             else:
                 # Reset to empty gray bar when not processing
