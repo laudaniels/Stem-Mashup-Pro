@@ -128,6 +128,7 @@ class StudioState:
         def analyze():
             # Use lock to prevent multiple concurrent analyses for this slot
             with self._analysis_locks[slot]:
+                self.sep_in_progress = True
                 try:
                     self.add_status(f"🎵 Song {slot+1}: Analyzing BPM...")
                     bpm, anchor = self.engine.analyze_track(file_path)
@@ -160,6 +161,7 @@ class StudioState:
                     self.song_bpms[slot] = False
                     self.song_keys[slot] = -1
                 finally:
+                    self.sep_in_progress = False
                     self._analysis_events[slot].set()
 
         # Start analysis in background without waiting
