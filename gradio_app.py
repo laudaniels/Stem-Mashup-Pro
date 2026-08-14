@@ -726,9 +726,7 @@ def create_app():
                         )
                         key_overrides_ui.append(key_override)
 
-        # Progress bar for detection/separation
-        with gr.Row():
-            progress_bar = gr.HTML(value='<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; overflow: hidden;"></div>', elem_id="detection_progress_bar")
+        # Progress indicator (removed - using status animation instead)
 
         # System status display with auto-refresh
         with gr.Row():
@@ -1027,20 +1025,14 @@ def create_app():
                 last_status_text[0] = status_text
                 status_update = gr.update(value=status_text)
 
-            # Generate progress indicator with SVG spinner
+            # Animate status with spinner when processing
             if state.sep_in_progress:
-                progress_html = '''<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
-                <svg width="20" height="20" viewBox="0 0 50 50" style="animation: spin 1s linear infinite;">
-                  <circle cx="25" cy="25" r="20" fill="none" stroke="#6366f1" stroke-width="4" stroke-dasharray="31.4 94.2" stroke-linecap="round"/>
-                </svg>
-                <span style="margin-left: 8px; font-size: 12px; color: #666; font-weight: 500;">Processing...</span>
-                </div>
-                <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>'''
-                progress_update = gr.update(value=progress_html)
-            else:
-                # Reset to empty gray bar when not processing
-                progress_html = '<div style="width: 100%; height: 24px; background: #e5e7eb; border-radius: 4px; overflow: hidden;"></div>'
-                progress_update = gr.update(value=progress_html)
+                spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                spinner = spinners[state.animation_frame % len(spinners)]
+                state.animation_frame += 1
+                # Find the "Running Demucs" line and add spinner animation
+                if "Running Demucs" in status_text:
+                    status_text = status_text.replace("Running Demucs", f"{spinner} Running Demucs")
 
             # Get BPM and Key displays for both songs
             bpm1_text = state.get_bpm_display(0)
@@ -1082,7 +1074,7 @@ def create_app():
                 pitch_text = (f"{abs_diff} steps: Shift S2 {diff:+d} semitones to {song1_key}, "
                              f"or middle ({mid_key}): S1 {mid_shift_s1:+.1f}, S2 {mid_shift_s2:+.1f}")
 
-            updates = [status_update, progress_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
+            updates = [status_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
                       pitch1_update, pitch2_update]
             # Update all sliders
@@ -1104,7 +1096,7 @@ def create_app():
 
         status_refresh_timer.tick(
             update_all,
-            outputs=[separate_status, progress_bar, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip]
+            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip]
         )
 
         # CSS for styling (script is now in head parameter)
