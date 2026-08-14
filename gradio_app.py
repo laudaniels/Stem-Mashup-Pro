@@ -985,7 +985,7 @@ def create_app():
 
         def preview_and_update():
             audio_path, status = state.preview()
-            return gr.update(value=audio_path), status
+            return audio_path, status
 
         preview_btn.click(
             preview_and_update,
@@ -994,7 +994,7 @@ def create_app():
 
         def render_and_update():
             audio_path, status = state.render()
-            return gr.update(value=audio_path), status
+            return audio_path, status
 
         render_btn.click(
             render_and_update,
