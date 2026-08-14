@@ -26,6 +26,9 @@ from mashup_engine import MashupEngine
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = BASE_DIR / "Audio"
 AUDIO_DIR.mkdir(exist_ok=True)
+# Ensure Audio directory has proper permissions
+import os as _os
+_os.chmod(str(AUDIO_DIR), 0o755)
 
 presets_dir = BASE_DIR / "presets"
 presets_dir.mkdir(exist_ok=True)
@@ -50,6 +53,7 @@ class StudioState:
         self.key_overrides = [-1, -1]
         self.beat_offsets = [0.0, 0.0]
         self.pitch_manually_changed = [False, False]  # Track if user has manually changed pitch
+        self.selected_pitch_keys = [None, None]  # Track selected keys from pitch dropdown for filename
         self._sep_lock = Lock()
         self._analysis_locks = [Lock(), Lock()]  # Prevent race conditions on analysis/separation
         self._analysis_events = [threading.Event(), threading.Event()]
@@ -232,6 +236,7 @@ class StudioState:
     def _create_stems_zip(self):
         """Create ZIP file of stems (called automatically after separation)."""
         import zipfile
+        import os
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             zip_filename = f"stems_export_original_{timestamp}.zip"
@@ -243,6 +248,8 @@ class StudioState:
                         for stem_name, stem_path in stem_dict.items():
                             arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
                             zf.write(stem_path, arcname=arcname)
+            # Ensure ZIP file is readable
+            os.chmod(str(zip_path), 0o644)
             self.add_status(f"📦 ZIP ready: {zip_filename}")
             print(f"[Stems] ZIP auto-created: {zip_path}")
         except Exception as e:
@@ -358,8 +365,9 @@ class StudioState:
             pitch_changed = pitch_shift_1 or pitch_shift_2
 
             # Get key and BPM display values
-            key1_name = self.engine._key_to_note(keys[0]) if keys[0] >= 0 else "?"
-            key2_name = self.engine._key_to_note(keys[1]) if keys[1] >= 0 else "?"
+            # Use selected pitch keys if manually changed, otherwise use detected keys
+            key1_name = self.selected_pitch_keys[0].split()[0] if self.selected_pitch_keys[0] else (self.engine._key_to_note(keys[0]) if keys[0] >= 0 else "?")
+            key2_name = self.selected_pitch_keys[1].split()[0] if self.selected_pitch_keys[1] else (self.engine._key_to_note(keys[1]) if keys[1] >= 0 else "?")
             detected_bpm = int(bpms[0]) if bpms[0] else 0  # Use Song 1's BPM as reference
 
             # Build filename with actual settings or "original" if nothing changed
@@ -379,6 +387,9 @@ class StudioState:
             output_name = f"{output_name_base}_{timestamp}.mp3"
             output = str(AUDIO_DIR / output_name)
             Path(temp_output).rename(output)
+            # Ensure file is readable
+            import os
+            os.chmod(output, 0o644)
 
             # Create adjusted stems (pitch/tempo only, no mixing)
             self._render_adjusted_stems_silent(params, key1_name, key2_name, detected_bpm, target_bpm, bpm_overridden, pitch_changed)
@@ -490,6 +501,7 @@ class StudioState:
     def _create_render_zip(self, remix_path, output_name_base, timestamp):
         """Create ZIP file with remix and adjusted stems."""
         import zipfile
+        import os
         try:
             zip_filename = f"render_output_{output_name_base}_{timestamp}.zip"
             zip_path = AUDIO_DIR / zip_filename
@@ -506,6 +518,8 @@ class StudioState:
                     for stem_file in sorted(stems_adjusted_dir.glob("*.wav")):
                         zf.write(stem_file, arcname=f"02_stems/{stem_file.name}")
 
+            # Ensure ZIP file is readable
+            os.chmod(str(zip_path), 0o644)
             self.add_status(f"✓ Download package ready: {zip_filename}")
             print(f"[Render] ZIP created: {zip_path}")
         except Exception as e:
@@ -515,6 +529,7 @@ class StudioState:
     def download_stems(self):
         """Create a ZIP file of all separated stems."""
         import zipfile
+        import os
 
         if not self.both_songs_loaded():
             return None, "Load both songs first."
@@ -532,6 +547,8 @@ class StudioState:
                         for stem_name, stem_path in stem_dict.items():
                             arcname = f"Song_{slot+1}_{song_name}/{stem_name}.wav"
                             zf.write(stem_path, arcname=arcname)
+            # Ensure ZIP file is readable
+            os.chmod(str(zip_path), 0o644)
             self.add_status(f"📦 Stems exported: {zip_filename}")
             print(f"[Stems] ZIP created: {zip_path}")
             return str(zip_path), f"Stems downloaded: {zip_filename}"
@@ -769,6 +786,7 @@ def create_app():
                         def on_pitch_change(key_name):
                             if key_name in KEY_NAMES:
                                 state.pitch_manually_changed[slot] = True
+                                state.selected_pitch_keys[slot] = key_name
                                 key_idx = KEY_NAMES.index(key_name)
                                 detected_idx = state.song_keys[slot] if state.song_keys[slot] is not None else 0
                                 semitone_shift = (key_idx - detected_idx) % 12
