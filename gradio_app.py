@@ -1014,7 +1014,7 @@ def create_app():
 
             # Generate progress bar HTML
             if state.sep_in_progress:
-                progress_html = '<div style="width: 100%; height: 24px; background: #f0f0f0; border-radius: 4px; overflow: hidden; position: relative;"><div style="height: 100%; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #6366f1 100%); background-size: 200% 100%; animation: progress-walk 2s infinite; border-radius: 4px;"></div></div>'
+                progress_html = '''<style>@keyframes pw {0% {background-position: 0%} 100% {background-position: 200%}}</style><div style="width: 100%; height: 24px; background: #f0f0f0; border-radius: 4px; overflow: hidden;"><div style="height: 100%; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #6366f1 100%); background-size: 200% 100%; animation: pw 2s linear infinite; border-radius: 4px;"></div></div>'''
                 progress_update = gr.update(value=progress_html)
             else:
                 # Reset to empty gray bar when not processing
