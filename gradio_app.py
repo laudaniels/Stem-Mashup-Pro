@@ -726,7 +726,9 @@ def create_app():
                         )
                         key_overrides_ui.append(key_override)
 
-        # Progress indicator (removed - using status animation instead)
+        # Visual separator
+        with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 2px; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 1px;"></div>')
 
         # System status display with auto-refresh
         with gr.Row():
@@ -1018,13 +1020,6 @@ def create_app():
             if stems_ready:
                 status_text += "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✨ Files analyzed and stems created, have fun Mixing! ✨\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-            # Only update status textbox if content actually changed
-            if status_text == last_status_text[0]:
-                status_update = gr.update()
-            else:
-                last_status_text[0] = status_text
-                status_update = gr.update(value=status_text)
-
             # Animate status with spinner when processing
             if state.sep_in_progress:
                 spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -1033,6 +1028,13 @@ def create_app():
                 # Find the "Running Demucs" line and add spinner animation
                 if "Running Demucs" in status_text:
                     status_text = status_text.replace("Running Demucs", f"{spinner} Running Demucs")
+
+            # Always update when processing (even if text is same, spinner changes)
+            if state.sep_in_progress or status_text != last_status_text[0]:
+                last_status_text[0] = status_text
+                status_update = gr.update(value=status_text)
+            else:
+                status_update = gr.update()
 
             # Get BPM and Key displays for both songs
             bpm1_text = state.get_bpm_display(0)
