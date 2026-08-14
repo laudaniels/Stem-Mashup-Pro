@@ -722,7 +722,7 @@ def create_app():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
-                    audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True)
+                    audio_player = gr.Audio(label="Load & Preview", interactive=True)
                     audio_players.append(audio_player)
                     file_inputs.append(audio_player)
 
@@ -783,13 +783,35 @@ def create_app():
                     state.pitch_manually_changed[slot] = False
                     state.add_status(f"🗑️ Song {slot+1} removed")
                     status_text = state.get_status_text()
-                    return gr.update(), "—", "—", status_text
+                    return (None, None), "—", "—", status_text
                 else:
-                    msg, audio_path, _ = state.load_song(f, slot)
+                    # Handle both file path (string) and audio array (tuple) inputs
+                    if isinstance(f, (tuple, list)):
+                        # f is (audio_array, sample_rate) from Gradio Audio component
+                        import librosa
+                        import soundfile as sf
+                        from pathlib import Path
+                        import tempfile
+
+                        audio_array, sr = f
+                        # Save to temporary WAV file for processing
+                        temp_dir = Path(tempfile.gettempdir()) / "stem_mashup_upload"
+                        temp_dir.mkdir(exist_ok=True)
+                        temp_path = str(temp_dir / f"uploaded_song_{slot}.wav")
+                        sf.write(temp_path, audio_array, sr)
+                        file_path = temp_path
+                    else:
+                        # f is a file path string
+                        file_path = f
+
+                    msg, audio_path, _ = state.load_song(file_path, slot)
                     bpm_text = state.get_bpm_display(slot)
                     key_text = state.get_key_display(slot)
                     status_text = state.get_status_text()
-                    return gr.update(), bpm_text, key_text, status_text
+                    # Return audio array for waveform display
+                    import librosa
+                    y, sr = librosa.load(audio_path, sr=None)
+                    return (y, sr), bpm_text, key_text, status_text
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
@@ -809,13 +831,35 @@ def create_app():
                             state.song_keys[slot] = None
                             state.pitch_manually_changed[slot] = False
                             state.add_status(f"🗑️ Song {slot+1} removed")
-                            return gr.update(), "—", "—", state.get_status_text()
+                            return (None, None), "—", "—", state.get_status_text()
 
-                        msg, audio_path, _ = state.load_song(f, slot)
+                        # Handle both file path (string) and audio array (tuple) inputs
+                        if isinstance(f, (tuple, list)):
+                            # f is (audio_array, sample_rate) from Gradio Audio component
+                            import librosa
+                            import soundfile as sf
+                            from pathlib import Path
+                            import tempfile
+
+                            audio_array, sr = f
+                            # Save to temporary WAV file for processing
+                            temp_dir = Path(tempfile.gettempdir()) / "stem_mashup_upload"
+                            temp_dir.mkdir(exist_ok=True)
+                            temp_path = str(temp_dir / f"uploaded_song_{slot}.wav")
+                            sf.write(temp_path, audio_array, sr)
+                            file_path = temp_path
+                        else:
+                            # f is a file path string
+                            file_path = f
+
+                        msg, audio_path, _ = state.load_song(file_path, slot)
                         bpm_text = state.get_bpm_display(slot)
                         key_text = state.get_key_display(slot)
                         status_text = state.get_status_text()
-                        return gr.update(), bpm_text, key_text, status_text
+                        # Return audio array for waveform display
+                        import librosa
+                        y, sr = librosa.load(audio_path, sr=None)
+                        return (y, sr), bpm_text, key_text, status_text
                     return load_song2
 
                 file_input.change(
