@@ -1075,8 +1075,8 @@ def create_app():
                 mid_key_idx = (keys[0] + keys[1]) // 2
                 mid_key = state.engine._key_to_note(mid_key_idx)
 
-                pitch_text = (f"{abs_diff} steps: Shift S2 {diff:+d} semitones to {song1_key}, "
-                             f"or middle ({mid_key}): S1 {mid_shift_s1:+.1f}, S2 {mid_shift_s2:+.1f}")
+                pitch_text = (f"{abs_diff} steps: Shift Song 2 {diff:+d} semitones to {song1_key}, "
+                             f"or middle ({mid_key}): Song 1 {mid_shift_s1:+.1f}, Song 2 {mid_shift_s2:+.1f}")
 
             updates = [status_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
