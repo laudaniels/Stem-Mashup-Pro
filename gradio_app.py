@@ -575,6 +575,28 @@ class StudioState:
         except Exception as e:
             return f"Load error: {str(e)[:100]}"
 
+    def cleanup_audio_files(self):
+        """Delete all generated audio files."""
+        try:
+            import shutil
+            deleted_count = 0
+
+            # Delete files in Audio folder
+            if AUDIO_DIR.exists():
+                for file in AUDIO_DIR.glob("*"):
+                    if file.is_file():
+                        file.unlink()
+                        deleted_count += 1
+                    elif file.is_dir():
+                        shutil.rmtree(file)
+                        deleted_count += 1
+
+            self.add_status(f"🗑️ Cleanup complete: {deleted_count} files/folders deleted")
+            return f"✓ Cleanup complete! Deleted {deleted_count} files and folders."
+        except Exception as e:
+            self.add_status(f"❌ Cleanup error: {e}")
+            return f"Cleanup error: {str(e)[:100]}"
+
 def create_app():
     state = StudioState()
 
@@ -618,6 +640,9 @@ def create_app():
                         )
                         key_overrides_ui.append(key_override)
 
+        # Progress bar for detection/separation
+        with gr.Row():
+            progress_bar = gr.HTML(value="", elem_id="detection_progress_bar")
 
         # System status display with auto-refresh
         with gr.Row():
@@ -880,6 +905,17 @@ def create_app():
             outputs=[output_audio, render_status]
         )
 
+        # ===== Cleanup =====
+        gr.Markdown("### Utilities")
+        with gr.Row():
+            cleanup_btn = gr.Button("🗑️ Cleanup Audio Files", size="lg", scale=1)
+            cleanup_status = gr.Textbox(value="Ready", interactive=False, scale=2, label="Status")
+
+        cleanup_btn.click(
+            lambda: state.cleanup_audio_files(),
+            outputs=[cleanup_status]
+        )
+
         # Cache for status text to avoid unnecessary updates
         last_status_text = [None]
 
@@ -898,6 +934,13 @@ def create_app():
             else:
                 last_status_text[0] = status_text
                 status_update = gr.update(value=status_text)
+
+            # Generate progress bar HTML
+            if state.sep_in_progress:
+                progress_html = '<div style="width: 100%; height: 24px; background: #f0f0f0; border-radius: 4px; overflow: hidden; position: relative;"><div style="height: 100%; background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #6366f1 100%); background-size: 200% 100%; animation: progress-walk 2s infinite; border-radius: 4px;"></div></div>'
+                progress_update = gr.update(value=progress_html)
+            else:
+                progress_update = gr.update(value="")
 
             # Get BPM and Key displays for both songs
             bpm1_text = state.get_bpm_display(0)
@@ -939,7 +982,7 @@ def create_app():
                 pitch_text = (f"{abs_diff} steps: Shift S2 {diff:+d} semitones to {song1_key}, "
                              f"or middle ({mid_key}): S1 {mid_shift_s1:+.1f}, S2 {mid_shift_s2:+.1f}")
 
-            updates = [status_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
+            updates = [status_update, progress_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
                       pitch1_update, pitch2_update]
             # Update all sliders
@@ -961,7 +1004,7 @@ def create_app():
 
         status_refresh_timer.tick(
             update_all,
-            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip]
+            outputs=[separate_status, progress_bar, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip]
         )
 
         # CSS for styling (script is now in head parameter)
@@ -989,6 +1032,10 @@ def create_app():
         }
         .gradio-timer {
             display: none !important;
+        }
+        @keyframes progress-walk {
+            0% { background-position: 0% center; }
+            100% { background-position: 200% center; }
         }
         </style>
         """)
