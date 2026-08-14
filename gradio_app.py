@@ -440,14 +440,14 @@ class StudioState:
                     # Render the solo stem with all effects applied
                     temp_output = self.engine.render(solo_params, preview=False)
 
-                    # Save as WAV with proper naming
+                    # Save as high-quality, uncompressed WAV
                     suffix = f"{current_key}_{bpm_value}bpm"
                     output_path = stems_adjusted_dir / f"Song{slot+1}_{song_name}_{stem_type}_{suffix}.wav"
 
-                    # Convert MP3 to WAV
+                    # Convert MP3 to 24-bit PCM WAV (lossless, best quality)
                     import subprocess
                     subprocess.run(
-                        ["ffmpeg", "-i", temp_output, "-q:a", "0", "-map", "a", str(output_path), "-y"],
+                        ["ffmpeg", "-i", temp_output, "-acodec", "pcm_s24le", "-ar", "48000", str(output_path), "-y"],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         check=True
