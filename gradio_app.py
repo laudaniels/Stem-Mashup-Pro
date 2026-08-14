@@ -882,6 +882,8 @@ def create_app():
                         slider_refs[f"s{i}_{name}"] = sl
 
         # ===== Mixing Controls =====
+        with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
         gr.Markdown("### Mixing")
 
         pitch_suggestion = gr.Textbox(label="Pitch Shift Suggestion", value="—", interactive=False)
@@ -936,6 +938,8 @@ def create_app():
             )
 
         # ===== Presets =====
+        with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
         gr.Markdown("### Presets")
         with gr.Row():
             preset_name = gr.Textbox(label="Preset Name", placeholder="my_mashup")
@@ -956,6 +960,8 @@ def create_app():
         )
 
         # ===== Render =====
+        with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
         gr.Markdown("### Render")
 
         with gr.Row():
@@ -996,6 +1002,8 @@ def create_app():
         )
 
         # ===== Cleanup =====
+        with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
         gr.Markdown("### Utilities")
         with gr.Row():
             cleanup_btn = gr.Button("🗑️ Cleanup Audio Files", size="lg", scale=1)
