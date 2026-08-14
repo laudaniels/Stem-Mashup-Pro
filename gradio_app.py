@@ -975,7 +975,7 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio = gr.Audio(label="Output", elem_id="output_audio_player", scale=2)
+            output_audio = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", scale=2)
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
@@ -989,21 +989,13 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
 
-        def preview_and_update():
-            audio_path, status = state.preview()
-            return audio_path, status
-
         preview_btn.click(
-            preview_and_update,
+            lambda: state.preview(),
             outputs=[output_audio, render_status]
         )
 
-        def render_and_update():
-            audio_path, status = state.render()
-            return audio_path, status
-
         render_btn.click(
-            render_and_update,
+            lambda: state.render(),
             outputs=[output_audio, render_status]
         )
 
