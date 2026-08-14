@@ -391,6 +391,15 @@ class StudioState:
             import shutil
             shutil.move(temp_preview, preview_path)
 
+            # Clean up old preview files (keep only the current one)
+            try:
+                preview_files = sorted(AUDIO_DIR.glob("preview_*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
+                for old_preview in preview_files[1:]:  # Delete all but the newest
+                    old_preview.unlink()
+                    print(f"[Auto-Preview] Cleaned up old: {old_preview.name}")
+            except Exception as e:
+                print(f"[Auto-Preview] Cleanup warning: {e}")
+
             # Store the persistent preview path
             self.last_render_path = preview_path
             self.add_status("✨ Preview ready! Click play to listen.")
