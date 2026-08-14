@@ -51,6 +51,7 @@ class StudioState:
         self.beat_offsets = [0.0, 0.0]
         self.pitch_manually_changed = [False, False]  # Track if user has manually changed pitch
         self._sep_lock = Lock()
+        self._analysis_locks = [Lock(), Lock()]  # Prevent race conditions on analysis/separation
         self._analysis_events = [threading.Event(), threading.Event()]
         self.status_messages = []
         self._status_lock = Lock()
@@ -107,49 +108,53 @@ class StudioState:
         if file_obj is None:
             return f"Song {slot+1}: no file", "", ""
 
-        self.song_paths[slot] = file_obj.name
+        # Handle both File object (from gr.File) and string path (from gr.Audio)
+        file_path = file_obj.name if hasattr(file_obj, 'name') else file_obj
+        self.song_paths[slot] = file_path
         self.stem_paths[slot] = None
         self.song_bpms[slot] = None
         self.song_beat_anchors[slot] = None
         self.song_keys[slot] = None
         self._analysis_events[slot].clear()
 
-        self.add_status(f"📁 Song {slot+1} loaded: {Path(file_obj.name).name}")
+        self.add_status(f"📁 Song {slot+1} loaded: {Path(file_path).name}")
 
         def analyze():
-            try:
-                self.add_status(f"🎵 Song {slot+1}: Analyzing BPM...")
-                bpm, anchor = self.engine.analyze_track(file_obj.name)
-                self.song_bpms[slot] = bpm
-                self.song_beat_anchors[slot] = anchor
-                self.add_status(f"✓ Song {slot+1}: BPM = {bpm:.0f}")
+            # Use lock to prevent multiple concurrent analyses for this slot
+            with self._analysis_locks[slot]:
+                try:
+                    self.add_status(f"🎵 Song {slot+1}: Analyzing BPM...")
+                    bpm, anchor = self.engine.analyze_track(file_path)
+                    self.song_bpms[slot] = bpm
+                    self.song_beat_anchors[slot] = anchor
+                    self.add_status(f"✓ Song {slot+1}: BPM = {bpm:.0f}")
 
-                self.add_status(f"🎼 Song {slot+1}: Analyzing key...")
-                key = self.engine.analyze_key(file_obj.name)
-                self.song_keys[slot] = key
-                key_name = self.engine._key_to_note(key) if key >= 0 else "?"
-                self.add_status(f"✓ Song {slot+1}: Key = {key_name}")
+                    self.add_status(f"🎼 Song {slot+1}: Analyzing key...")
+                    key = self.engine.analyze_key(file_path)
+                    self.song_keys[slot] = key
+                    key_name = self.engine._key_to_note(key) if key >= 0 else "?"
+                    self.add_status(f"✓ Song {slot+1}: Key = {key_name}")
 
-                # Start stem separation for this song immediately after analysis
-                if not self.stem_paths[slot]:
-                    self.add_status(f"🔄 Song {slot+1}: Starting stem separation...")
-                    try:
-                        stem_set = self.engine.separate_stems([file_obj.name])
-                        self.stem_paths[slot] = stem_set[0]
-                        self.add_status(f"✓ Song {slot+1}: Stems ready (Vocals, Beats, Bass, Other)")
+                    # Start stem separation for this song immediately after analysis
+                    if not self.stem_paths[slot]:
+                        self.add_status(f"🔄 Song {slot+1}: Starting stem separation...")
+                        try:
+                            stem_set = self.engine.separate_stems([file_path])
+                            self.stem_paths[slot] = stem_set[0]
+                            self.add_status(f"✓ Song {slot+1}: Stems ready (Vocals, Beats, Bass, Other)")
 
-                        # Create ZIP when both songs' stems are ready
-                        if self.stems_ready():
-                            self._create_stems_zip()
-                    except Exception as sep_e:
-                        self.add_status(f"❌ Song {slot+1}: Stem separation error: {sep_e}")
+                            # Create ZIP when both songs' stems are ready
+                            if self.stems_ready():
+                                self._create_stems_zip()
+                        except Exception as sep_e:
+                            self.add_status(f"❌ Song {slot+1}: Stem separation error: {sep_e}")
 
-            except Exception as e:
-                self.add_status(f"❌ Song {slot+1}: Analysis error: {e}")
-                self.song_bpms[slot] = False
-                self.song_keys[slot] = -1
-            finally:
-                self._analysis_events[slot].set()
+                except Exception as e:
+                    self.add_status(f"❌ Song {slot+1}: Analysis error: {e}")
+                    self.song_bpms[slot] = False
+                    self.song_keys[slot] = -1
+                finally:
+                    self._analysis_events[slot].set()
 
         # Start analysis in background without waiting
         thread = threading.Thread(target=analyze, daemon=True)
@@ -160,7 +165,7 @@ class StudioState:
             self.add_status(f"⏳ Waiting for Song {other}...")
 
         # Return immediately with audio file - don't wait for analysis!
-        return f"Song {slot+1}: {Path(file_obj.name).name} (analyzing…)", file_obj.name, ""
+        return f"Song {slot+1}: {Path(file_path).name} (analyzing…)", file_path, ""
 
     def update_key_override(self, slot, value):
         self.key_overrides[slot] = int(value) if value else -1
@@ -405,6 +410,10 @@ class StudioState:
         """Render individual stems with pitch/tempo adjustments (silent, no status messages)."""
         try:
             stems_adjusted_dir = AUDIO_DIR / "stems_bpm-key-adjusted"
+            # Clear old stems before creating new ones
+            if stems_adjusted_dir.exists():
+                import shutil
+                shutil.rmtree(stems_adjusted_dir)
             stems_adjusted_dir.mkdir(exist_ok=True)
 
             bpms = self.get_effective_bpms()
@@ -596,22 +605,15 @@ def create_app():
         key_displays = []
         bpm_overrides_ui = []
         key_overrides_ui = []
-        beat_offsets_ui = []
         audio_players = []
 
         with gr.Row():
             for i in range(2):
                 with gr.Column():
                     gr.Markdown(f"**Song {i+1}**")
-                    file_input = gr.File(
-                        label=f"Load",
-                        file_count="single",
-                        type="filepath"
-                    )
-                    file_inputs.append(file_input)
-
-                    audio_player = gr.Audio(label="Preview", type="filepath", interactive=False)
+                    audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True)
                     audio_players.append(audio_player)
+                    file_inputs.append(audio_player)
 
                     with gr.Row():
                         bpm_display = gr.Textbox(label="BPM", value="—", interactive=False, scale=1)
@@ -728,13 +730,6 @@ def create_app():
             key_override.change(
                 lambda val, slot=i: state.update_key_override(slot, val),
                 inputs=[key_override]
-            )
-
-        # Beat offset callbacks
-        for slot, offset_ui in beat_offsets_ui:
-            offset_ui.change(
-                lambda v, s=slot: state.update_beat_offset(s, v),
-                inputs=[offset_ui]
             )
 
         # ===== Per-Song Controls =====
@@ -997,8 +992,7 @@ def create_app():
             outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1], processing_indicator] + slider_outputs + [stems_download, render_files_zip]
         )
 
-        # Add JavaScript to disable autoplay on the output audio player
-        # and CSS to fix stems download window height and preserve scroll
+        # CSS for styling (script is now in head parameter)
         gr.HTML("""
         <style>
         #stems_download_file {
@@ -1025,7 +1019,6 @@ def create_app():
             font-size: 20px;
             white-space: nowrap;
         }
-        /* Hide timer component */
         [data-testid="timer"] {
             display: none !important;
         }
@@ -1033,123 +1026,10 @@ def create_app():
             display: none !important;
         }
         </style>
-        <script>
-        let lastScrollValue = "";
-
-        function scrollStatusBoxToBottom() {
-            const statusBox = document.getElementById('system_status_box');
-            if (statusBox) {
-                const textarea = statusBox.querySelector('textarea');
-                if (textarea) {
-                    // Scroll multiple times with increasing delays to ensure it happens
-                    textarea.scrollTop = textarea.scrollHeight;
-                    setTimeout(() => textarea.scrollTop = textarea.scrollHeight, 10);
-                    setTimeout(() => textarea.scrollTop = textarea.scrollHeight, 50);
-                    setTimeout(() => textarea.scrollTop = textarea.scrollHeight, 100);
-                }
-            }
-        }
-
-        // Scroll to bottom on load
-        document.addEventListener('DOMContentLoaded', scrollStatusBoxToBottom);
-
-        // Watch for changes to the status box and scroll to bottom
-        const statusObserver = new MutationObserver(() => {
-            // Delay scroll to ensure DOM is updated
-            setTimeout(scrollStatusBoxToBottom, 50);
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const statusBox = document.getElementById('system_status_box');
-            if (statusBox) {
-                const textarea = statusBox.querySelector('textarea');
-                if (textarea) {
-                    // Listen for all possible change events
-                    textarea.addEventListener('input', scrollStatusBoxToBottom, true);
-                    textarea.addEventListener('change', scrollStatusBoxToBottom, true);
-
-                    // Observe the parent container for changes
-                    statusObserver.observe(statusBox, {
-                        characterData: true,
-                        subtree: true,
-                        childList: true,
-                        attributes: true,
-                        attributeOldValue: true,
-                        characterDataOldValue: true
-                    });
-                }
-            }
-        });
-
-        // Aggressive periodic check every 50ms - catches all Gradio updates
-        setInterval(() => {
-            const statusBox = document.getElementById('system_status_box');
-            if (statusBox) {
-                const textarea = statusBox.querySelector('textarea');
-                if (textarea && textarea.value !== lastScrollValue) {
-                    lastScrollValue = textarea.value;
-                    // Multiple scroll attempts to guarantee it works
-                    scrollStatusBoxToBottom();
-                    setTimeout(scrollStatusBoxToBottom, 10);
-                }
-            }
-        }, 50);
-
-        let currentlyPlaying = null;
-
-        function setupAudioControls() {
-            const allAudioPlayers = document.querySelectorAll('audio');
-            allAudioPlayers.forEach(player => {
-                // Disable autoplay completely
-                player.autoplay = false;
-                player.removeAttribute('autoplay');
-                player.pause();
-
-                // Remove any existing listeners by cloning the element
-                if (player._audioControlsInitialized) {
-                    return;
-                }
-                player._audioControlsInitialized = true;
-
-                // When this player starts, pause all others
-                player.addEventListener('play', () => {
-                    if (currentlyPlaying && currentlyPlaying !== player) {
-                        currentlyPlaying.pause();
-                    }
-                    currentlyPlaying = player;
-                }, true);
-
-                // When this player stops, clear the reference
-                player.addEventListener('pause', () => {
-                    if (currentlyPlaying === player) {
-                        currentlyPlaying = null;
-                    }
-                });
-
-                player.addEventListener('ended', () => {
-                    if (currentlyPlaying === player) {
-                        currentlyPlaying = null;
-                    }
-                });
-            });
-        }
-
-        // Run on load
-        document.addEventListener('DOMContentLoaded', setupAudioControls);
-
-        // Watch for new audio elements
-        const audioObserver = new MutationObserver(() => {
-            setTimeout(setupAudioControls, 50);
-        });
-        audioObserver.observe(document.body, { childList: true, subtree: true });
-
-        // Also check periodically
-        setInterval(setupAudioControls, 300);
-        </script>
         """)
 
     return app
 
 if __name__ == "__main__":
     app = create_app()
-    app.launch(share=False, theme=gr.themes.Base(primary_hue="purple"))
+    app.launch(share=False, theme=gr.themes.Base(primary_hue="purple"), head='<script>let lastScrollValue = "";function scrollStatusBoxToBottom(){const statusBox=document.getElementById("system_status_box");if(statusBox){const textarea=statusBox.querySelector("textarea");if(textarea){textarea.scrollTop=textarea.scrollHeight;setTimeout(()=>textarea.scrollTop=textarea.scrollHeight,10);setTimeout(()=>textarea.scrollTop=textarea.scrollHeight,50);setTimeout(()=>textarea.scrollTop=textarea.scrollHeight,100)}}}document.addEventListener("DOMContentLoaded",scrollStatusBoxToBottom);const statusObserver=new MutationObserver(()=>{setTimeout(scrollStatusBoxToBottom,50)});document.addEventListener("DOMContentLoaded",()=>{const statusBox=document.getElementById("system_status_box");if(statusBox){const textarea=statusBox.querySelector("textarea");if(textarea){textarea.addEventListener("input",scrollStatusBoxToBottom,true);textarea.addEventListener("change",scrollStatusBoxToBottom,true);statusObserver.observe(statusBox,{characterData:true,subtree:true,childList:true,attributes:true,attributeOldValue:true,characterDataOldValue:true})}}});setInterval(()=>{const statusBox=document.getElementById("system_status_box");if(statusBox){const textarea=statusBox.querySelector("textarea");if(textarea&&textarea.value!==lastScrollValue){lastScrollValue=textarea.value;scrollStatusBoxToBottom();setTimeout(scrollStatusBoxToBottom,10)}}},50);let currentlyPlaying=null;function setupAudioControls(){const allAudioPlayers=document.querySelectorAll("audio");allAudioPlayers.forEach(player=>{player.autoplay=false;player.removeAttribute("autoplay");player.pause();if(player._audioControlsInitialized){return;}player._audioControlsInitialized=true;player.addEventListener("play",()=>{if(currentlyPlaying&&currentlyPlaying!==player){currentlyPlaying.pause();}currentlyPlaying=player;},true);player.addEventListener("pause",()=>{if(currentlyPlaying===player){currentlyPlaying=null;}});player.addEventListener("ended",()=>{if(currentlyPlaying===player){currentlyPlaying=null;}})});}document.addEventListener("DOMContentLoaded",setupAudioControls);const audioObserver=new MutationObserver(()=>{setTimeout(setupAudioControls,50);});audioObserver.observe(document.body,{childList:true,subtree:true});setInterval(setupAudioControls,300);</script>')
