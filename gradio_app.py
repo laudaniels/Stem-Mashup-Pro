@@ -62,6 +62,7 @@ class StudioState:
         self.sep_in_progress = False
         self.render_in_progress = False
         self.render_counter = 0  # Counter for unique filenames
+        self.last_render_path = None  # Track the last render for display
 
         # Per-song sliders: [vocals, beats, bass, other, pitch, reverb, speed, eq_low, eq_mid, eq_high]
         self.sliders = {
@@ -437,7 +438,8 @@ class StudioState:
             self._render_adjusted_stems_silent(params, key1_name, key2_name, detected_bpm, target_bpm, bpm_overridden, pitch_changed)
 
             # Create ZIP file with all outputs
-            self._create_render_zip(output, output_name_base, timestamp)
+            zip_path = self._create_render_zip(output, output_name_base, timestamp)
+            self.last_render_path = zip_path  # Track for display
 
             self.render_in_progress = False
             return output, f"✨ Render complete! Remix: {output_name}\n📦 Download package ready in Audio/ folder"
@@ -569,9 +571,11 @@ class StudioState:
             os.chmod(str(zip_path), 0o644)
             self.add_status(f"✓ Download package ready: {zip_filename}")
             print(f"[Render] ZIP created: {zip_path}")
+            return str(zip_path)
         except Exception as e:
             print(f"[Render] ZIP creation error: {e}")
             self.add_status(f"⚠️ ZIP creation: {e}")
+            return None
 
     def download_stems(self):
         """Create a ZIP file of all separated stems."""
@@ -968,12 +972,9 @@ def create_app():
 
             # Update download when files are ready
             def update_render_download():
-                # Find the most recent render ZIP file by modification time
-                render_files = list(AUDIO_DIR.glob("render_output_*.zip"))
-                if render_files:
-                    # Sort by modification time (newest first)
-                    newest = max(render_files, key=lambda p: p.stat().st_mtime)
-                    return gr.update(value=str(newest), interactive=False)
+                # Only show the current render, not old files from previous sessions
+                if state.last_render_path and Path(state.last_render_path).exists():
+                    return gr.update(value=state.last_render_path, interactive=False)
                 return gr.update(value=None, interactive=False)
 
 
