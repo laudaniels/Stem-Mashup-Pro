@@ -4,3 +4,6 @@ demucs
 numpy<2
 librosa
 gradio
+flask
+flask-cors
+scipy
