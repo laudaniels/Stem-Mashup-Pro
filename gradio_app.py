@@ -425,17 +425,22 @@ class StudioState:
         """Auto-generate preview when stems are ready. Stores in last_render_path."""
         try:
             if not self.stems_ready():
+                print("[Auto-Preview] Not starting - stems not ready yet")
                 return
 
             self.add_status("🎵 Auto-generating preview mix with current settings...")
+            print("[Auto-Preview] Starting preview generation...")
 
             # Generate preview with engine
             params = self.build_params()
             if not params["songs"][0] or not params["songs"][1]:
                 self.add_status("Cannot preview: songs not loaded")
+                print("[Auto-Preview] STOP - songs not loaded")
                 return
 
+            print("[Auto-Preview] Rendering 60-second preview...")
             temp_preview = self.engine.render(params, preview=True, preview_duration=60)
+            print(f"[Auto-Preview] Render done, temp file: {temp_preview}")
 
             # Save with unique name so it doesn't get overwritten
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -444,6 +449,7 @@ class StudioState:
 
             import shutil
             shutil.move(temp_preview, preview_path)
+            print(f"[Auto-Preview] Moved to: {preview_path}")
 
             # Clean up old preview files (keep only the current one)
             try:
@@ -458,18 +464,22 @@ class StudioState:
             self.last_render_path = preview_path
 
             # Start real-time streaming (Phase 2)
+            print("[Auto-Preview] Starting streaming server...")
             try:
                 stream_url = self.stream_manager.start()
-                self.add_status(f"✨ Preview ready! Listening on {stream_url}")
+                self.add_status(f"✨ Preview ready! Streaming on port 5001")
                 print(f"[Auto-Preview] Generated: {Path(preview_path).name}")
-                print(f"[Streaming] Started on {stream_url}")
+                print(f"[Streaming] ✓ Server started on {stream_url}")
             except Exception as e:
                 # Fall back to file-based preview if streaming fails
-                logger.warning(f"Could not start streaming: {e}, using file preview")
+                print(f"[Auto-Preview] ERROR starting stream: {e}")
+                logger.exception(f"Streaming error: {e}")
                 self.add_status("✨ Preview ready! Click play to listen.")
                 print(f"[Auto-Preview] Generated: {Path(preview_path).name}")
 
         except Exception as e:
+            print(f"[Auto-Preview] EXCEPTION: {type(e).__name__}: {e}")
+            logger.exception(f"Auto-preview error: {e}")
             self.add_status(f"❌ Auto-preview error: {str(e)[:100]}")
             print(f"[Auto-Preview] Error: {e}")
 
