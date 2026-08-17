@@ -220,6 +220,9 @@ __marimo__/
 # Neon Mashup Studio generated output
 /presets/
 /separated_stems/
+/stems_adjusted/
 /preview_temp.mp3
 /final_remix.mp3
 /Audio/
+*.mp3
+*.wav
