@@ -22,6 +22,12 @@ import threading
 from threading import Lock
 from datetime import datetime
 from mashup_engine import MashupEngine
+from audio_stream_manager import AudioStreamManager
+import logging
+
+# Configure logging for audio streaming
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = BASE_DIR / "Audio"
@@ -85,6 +91,51 @@ class StudioState:
         self.crossfader = 50
         self.target_bpm = 0
         self.beatmatch = False
+
+        # Initialize audio streaming manager for Phase 2
+        self.stream_manager = AudioStreamManager(
+            render_func=self._render_stream_chunk,
+            server_port=5001,
+            buffer_size_mb=10,  # 10MB buffer for ~15 seconds at 44.1kHz
+            chunk_duration=10,  # 10 second chunks
+        )
+
+    def _render_stream_chunk(self, settings: dict, duration: int) -> bytes:
+        """
+        Render audio chunk for streaming.
+
+        Args:
+            settings: Current slider settings
+            duration: Duration in seconds
+
+        Returns:
+            Audio bytes in MP3 format
+        """
+        try:
+            # Apply settings to render
+            params = self.build_params()
+
+            # Update params with any override settings from manager
+            if settings:
+                # Apply volume overrides if provided
+                for i in range(2):
+                    for stem in ["vocals_vol", "beats_vol", "bass_vol", "other_vol"]:
+                        key = f"s{i}_{stem}"
+                        if key in settings:
+                            if f"sliders" not in params:
+                                params["sliders"] = {}
+                            params["sliders"][key] = settings[key]
+
+            # Render the chunk
+            output = self.engine.render(params, preview=True, preview_duration=duration)
+            if output and Path(output).exists():
+                with open(output, "rb") as f:
+                    return f.read()
+            return b""
+
+        except Exception as e:
+            logger.error(f"Error rendering stream chunk: {e}")
+            return b""
 
     def both_songs_loaded(self):
         """Check if both songs are loaded."""
@@ -283,6 +334,15 @@ class StudioState:
         self.sliders[key] = value
         print(f"[Slider] {key} = {value}")
 
+        # Send settings update to streaming manager (Phase 2)
+        if self.stream_manager.is_running:
+            try:
+                # Send updated settings to streaming server
+                # This triggers a re-render with new settings
+                self.stream_manager.update_settings(self.sliders.copy())
+            except Exception as e:
+                logger.debug(f"Could not update streaming settings: {e}")
+
     def update_crossfader(self, value):
         self.crossfader = value
         print(f"[Crossfader] {value}% (Song 1 ← → Song 2)")
@@ -402,8 +462,18 @@ class StudioState:
 
             # Store the persistent preview path
             self.last_render_path = preview_path
-            self.add_status("✨ Preview ready! Click play to listen.")
-            print(f"[Auto-Preview] Generated: {Path(preview_path).name}")
+
+            # Start real-time streaming (Phase 2)
+            try:
+                stream_url = self.stream_manager.start()
+                self.add_status(f"✨ Preview ready! Listening on {stream_url}")
+                print(f"[Auto-Preview] Generated: {Path(preview_path).name}")
+                print(f"[Streaming] Started on {stream_url}")
+            except Exception as e:
+                # Fall back to file-based preview if streaming fails
+                logger.warning(f"Could not start streaming: {e}, using file preview")
+                self.add_status("✨ Preview ready! Click play to listen.")
+                print(f"[Auto-Preview] Generated: {Path(preview_path).name}")
 
         except Exception as e:
             self.add_status(f"❌ Auto-preview error: {str(e)[:100]}")
@@ -1037,8 +1107,12 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
             def update_output_audio():
-                # Display auto-generated preview or render in the audio player
-                if state.last_render_path and Path(state.last_render_path).exists():
+                # Display streaming URL if available (Phase 2), else fallback to file (Phase 1)
+                if state.stream_manager.is_running:
+                    # Use streaming URL for real-time audio
+                    return gr.update(value=state.stream_manager.get_stream_url())
+                elif state.last_render_path and Path(state.last_render_path).exists():
+                    # Fallback to file-based preview (Phase 1)
                     return gr.update(value=state.last_render_path)
                 return gr.update(value=None)
 
