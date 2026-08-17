@@ -31,21 +31,24 @@ class AudioStreamServer:
     def stream_audio(self):
         """HTTP streaming endpoint for audio player."""
         chunk_size = 4096  # 4KB chunks
-        buffer_timeout = 5  # seconds to wait for buffer data
+        buffer_timeout = 10  # seconds to wait for buffer data
 
         def generate():
             """Generator function for Flask streaming."""
+            chunks_sent = 0
+            logger.info("Stream started, waiting for buffer...")
+
             while self.running:
                 # Wait for data to be available in buffer
                 start_time = time.time()
                 while len(self.state.audio_buffer) == 0 and self.running:
-                    if time.time() - start_time > buffer_timeout:
-                        # Timeout waiting for data
-                        logger.warning("Timeout waiting for audio buffer")
+                    elapsed = time.time() - start_time
+                    if elapsed > buffer_timeout:
+                        logger.warning(f"Timeout waiting for buffer after {elapsed:.1f}s")
                         yield b""
-                        continue
+                        return  # Stop streaming if no data
 
-                    time.sleep(0.01)  # Small sleep to avoid busy waiting
+                    time.sleep(0.05)  # Slightly longer sleep
 
                 if not self.running:
                     break
@@ -53,9 +56,14 @@ class AudioStreamServer:
                 # Read chunk from buffer
                 chunk = self.state.read_chunk(chunk_size)
                 if chunk:
+                    chunks_sent += 1
                     yield chunk
+                    if chunks_sent % 100 == 0:
+                        logger.debug(f"Sent {chunks_sent} chunks, buffer: {len(self.state.audio_buffer)} bytes")
                 else:
                     time.sleep(0.01)
+
+            logger.info(f"Stream ended after {chunks_sent} chunks")
 
         return Response(generate(), mimetype="audio/mpeg")
 
