@@ -105,36 +105,30 @@ class StudioState:
         Render audio chunk for streaming.
 
         Args:
-            settings: Current slider settings
+            settings: Current slider settings (unused for now - uses app state)
             duration: Duration in seconds
 
         Returns:
             Audio bytes in MP3 format
         """
         try:
-            # Apply settings to render
+            # Render using current app state (sliders, BPM, etc.)
             params = self.build_params()
 
-            # Update params with any override settings from manager
-            if settings:
-                # Apply volume overrides if provided
-                for i in range(2):
-                    for stem in ["vocals_vol", "beats_vol", "bass_vol", "other_vol"]:
-                        key = f"s{i}_{stem}"
-                        if key in settings:
-                            if f"sliders" not in params:
-                                params["sliders"] = {}
-                            params["sliders"][key] = settings[key]
-
-            # Render the chunk
+            # Render the preview chunk
             output = self.engine.render(params, preview=True, preview_duration=duration)
+
             if output and Path(output).exists():
                 with open(output, "rb") as f:
-                    return f.read()
+                    audio_data = f.read()
+                    logger.debug(f"Rendered chunk: {len(audio_data)} bytes")
+                    return audio_data
+
+            logger.warning(f"No output from render: {output}")
             return b""
 
         except Exception as e:
-            logger.error(f"Error rendering stream chunk: {e}")
+            logger.error(f"Error rendering stream chunk: {e}", exc_info=True)
             return b""
 
     def both_songs_loaded(self):
