@@ -272,8 +272,18 @@ class StudioState:
 
                 # Auto-create ZIP file and preview when all stems are ready
                 if self.stems_ready():
-                    self._create_stems_zip()
-                    self._auto_generate_preview()
+                    print("[Stems] All stems ready, starting ZIP and preview...")
+                    try:
+                        self._create_stems_zip()
+                    except Exception as e:
+                        print(f"[Stems] ZIP error: {e}")
+
+                    try:
+                        self._auto_generate_preview()
+                    except Exception as e:
+                        print(f"[Stems] Preview error: {e}")
+                else:
+                    print("[Stems] Not all stems ready yet")
 
             except Exception as e:
                 print(f"[Stems] Error: {type(e).__name__}: {e}")
