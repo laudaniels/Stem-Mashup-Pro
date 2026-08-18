@@ -1153,7 +1153,10 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio_html = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", scale=2)
+            output_audio_html = gr.HTML(
+                '<audio id="preview_player" controls style="width:100%;"><source src="" type="audio/mpeg"></audio>',
+                elem_id="output_audio_player"
+            )
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
@@ -1167,21 +1170,19 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
             def update_output_audio():
-                # Set streaming URL if available, else use Gradio File component workaround
+                # Update HTML5 audio player with src URL
                 if state.stream_manager.is_running:
                     stream_url = state.stream_manager.get_stream_url()
-                    html = f"""<div style="display:flex; flex-direction:column; gap:10px;">
-                        <label style="font-weight:bold;">Output (Real-time streaming)</label>
-                        <audio id="preview_player" controls style="width:100%; background:#1a1a2e; border-radius:8px; padding:10px;">
-                            <source id="preview_source" src="{stream_url}" type="audio/mpeg">
-                            Your browser does not support the audio element.
-                        </audio>
-                    </div>"""
-                    return gr.update(value=html)
+                    src = stream_url
                 elif state.last_render_path and Path(state.last_render_path).exists():
-                    # Return file path directly - Gradio will handle it
-                    return gr.update(value=state.last_render_path)
-                return gr.update(value=None)
+                    # Use custom /preview/ route for file serving
+                    filename = Path(state.last_render_path).name
+                    src = f"/preview/{filename}"
+                else:
+                    return gr.update(value='<audio id="preview_player" controls style="width:100%;"><source src="" type="audio/mpeg"></audio>')
+
+                html = f'<audio id="preview_player" controls style="width:100%;"><source src="{src}" type="audio/mpeg"></audio>'
+                return gr.update(value=html)
 
         def preview_with_update():
             status = state.preview()
