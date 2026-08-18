@@ -1143,12 +1143,9 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
             def update_output_audio():
-                # Display streaming URL if available (Phase 2), else fallback to file (Phase 1)
-                if state.stream_manager.is_running:
-                    # Use streaming URL for real-time audio
-                    return gr.update(value=state.stream_manager.get_stream_url())
-                elif state.last_render_path and Path(state.last_render_path).exists():
-                    # Fallback to file-based preview (Phase 1)
+                # Use file-based preview (Gradio handles playback)
+                # Streaming works in background for real-time updates
+                if state.last_render_path and Path(state.last_render_path).exists():
                     return gr.update(value=state.last_render_path)
                 return gr.update(value=None)
 
