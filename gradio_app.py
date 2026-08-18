@@ -464,9 +464,10 @@ class StudioState:
                 preview_path = temp_preview
 
             self.last_render_path = preview_path
-            # Return relative path for Gradio
-            rel_path = Path(preview_path).name  # Just the filename
-            return rel_path, "Preview generated and playing…"
+            # Return URL via custom route
+            filename = Path(preview_path).name
+            preview_url = f"/preview/{filename}"
+            return preview_url, "Preview generated and playing…"
         except Exception as e:
             return None, f"Preview error: {str(e)[:100]}"
 
@@ -1334,6 +1335,16 @@ def create_app():
         }
         </style>
         """)
+
+    # Add custom route to serve preview files
+    from fastapi.responses import FileResponse
+    @app.app.get("/preview/{filename}")
+    async def serve_preview(filename: str):
+        """Serve preview files from project root."""
+        file_path = BASE_DIR / filename
+        if file_path.exists() and str(file_path).startswith(str(BASE_DIR)):
+            return FileResponse(file_path, media_type="audio/mpeg")
+        return {"error": "File not found"}, 404
 
     return app
 
