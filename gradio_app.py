@@ -1175,14 +1175,24 @@ def create_app():
                     return gr.update(value=html)
                 return gr.update(value="""<div style="color:#999;">No audio ready</div>""")
 
+        def preview_with_update():
+            status = state.preview()
+            audio_html = update_output_audio()
+            return (status, audio_html)
+
         preview_btn.click(
-            lambda: (state.preview(), update_output_audio()),
+            preview_with_update,
             outputs=[render_status, output_audio_html]
         )
 
+        def render_with_update():
+            status = state.render()
+            audio_html = update_output_audio()
+            return (status, audio_html)
+
         render_btn.click(
-            lambda: state.render(),
-            outputs=[output_audio, render_status]
+            render_with_update,
+            outputs=[render_status, output_audio_html]
         )
 
         # ===== Cleanup =====
