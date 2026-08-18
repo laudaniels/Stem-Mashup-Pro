@@ -1153,7 +1153,7 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
             def update_output_audio():
-                # Set streaming URL if available, else file path
+                # Set streaming URL if available, else file path via Gradio's /file= API
                 if state.stream_manager.is_running:
                     stream_url = state.stream_manager.get_stream_url()
                     html = f"""<div style="display:flex; flex-direction:column; gap:10px;">
@@ -1165,10 +1165,12 @@ def create_app():
                     </div>"""
                     return gr.update(value=html)
                 elif state.last_render_path and Path(state.last_render_path).exists():
+                    # Use Gradio's /file= API to serve the file
+                    file_url = f"/file={state.last_render_path}"
                     html = f"""<div style="display:flex; flex-direction:column; gap:10px;">
                         <label style="font-weight:bold;">Output</label>
                         <audio id="preview_player" controls style="width:100%; background:#1a1a2e; border-radius:8px; padding:10px;">
-                            <source id="preview_source" src="file={state.last_render_path}" type="audio/mpeg">
+                            <source id="preview_source" src="{file_url}" type="audio/mpeg">
                             Your browser does not support the audio element.
                         </audio>
                     </div>"""
