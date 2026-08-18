@@ -270,7 +270,12 @@ class StudioState:
                     self.add_status(f"✓ Song {slot+1} stems ready: Vocals, Beats, Bass, Other")
 
                 # Auto-create ZIP file and preview when all stems are ready
-                if self.stems_ready():
+                print(f"[Stems] === CHECKING stems_ready() ===")
+                print(f"[Stems] stem_paths[0] = {self.stem_paths[0] is not None}")
+                print(f"[Stems] stem_paths[1] = {self.stem_paths[1] is not None}")
+                ready = self.stems_ready()
+                print(f"[Stems] stems_ready() returned: {ready}")
+                if ready:
                     print("[Stems] All stems ready, starting ZIP and preview...")
                     try:
                         self._create_stems_zip()
