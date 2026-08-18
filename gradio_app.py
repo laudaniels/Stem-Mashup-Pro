@@ -442,9 +442,9 @@ class StudioState:
 
             # Generate preview with engine
             params = self.build_params()
-            if not params["songs"][0] or not params["songs"][1]:
-                self.add_status("Cannot preview: songs not loaded")
-                print("[Auto-Preview] STOP - songs not loaded")
+            if not params["songs"][0] and not params["songs"][1]:
+                self.add_status("Cannot preview: no songs loaded")
+                print("[Auto-Preview] STOP - no songs loaded")
                 return
 
             print("[Auto-Preview] Rendering 60-second preview...")
