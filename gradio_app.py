@@ -476,10 +476,10 @@ class StudioState:
             temp_preview = self.engine.render(params, preview=True, preview_duration=60)
             print(f"[Auto-Preview] Render done, temp file: {temp_preview}")
 
-            # Save with unique name so it doesn't get overwritten
+            # Save to project root (for Gradio to access via relative path)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             preview_filename = f"preview_{timestamp}.mp3"
-            preview_path = str(AUDIO_DIR / preview_filename)
+            preview_path = str(BASE_DIR / preview_filename)  # Save to project root for relative access
 
             import shutil
             shutil.move(temp_preview, preview_path)
