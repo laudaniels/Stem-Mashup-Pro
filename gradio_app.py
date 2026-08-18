@@ -448,8 +448,23 @@ class StudioState:
             params = self.build_params()
             if not params["songs"][0] or not params["songs"][1]:
                 return None, "Load Song 1 and Song 2 before previewing."
-            output = self.engine.render(params, preview=True, preview_duration=60)
-            return output, "Preview generated and playing…"
+
+            # Generate temp preview, then process it like auto-preview does
+            temp_preview = self.engine.render(params, preview=True, preview_duration=60)
+
+            # Move to project root like _auto_generate_preview does
+            from datetime import datetime
+            import shutil
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            preview_filename = f"preview_{timestamp}.mp3"
+            preview_path = str(BASE_DIR / preview_filename)
+            try:
+                shutil.move(temp_preview, preview_path)
+            except:
+                preview_path = temp_preview
+
+            self.last_render_path = preview_path
+            return preview_path, "Preview generated and playing…"
         except Exception as e:
             return None, f"Preview error: {str(e)[:100]}"
 
@@ -479,11 +494,15 @@ class StudioState:
             # Save to project root (for Gradio to access via relative path)
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             preview_filename = f"preview_{timestamp}.mp3"
-            preview_path = str(BASE_DIR / preview_filename)  # Save to project root for relative access
+            preview_path = str(BASE_DIR / preview_filename)
 
             import shutil
-            shutil.move(temp_preview, preview_path)
-            print(f"[Auto-Preview] Moved to: {preview_path}")
+            try:
+                shutil.move(temp_preview, preview_path)
+                print(f"[Auto-Preview] Moved to: {preview_path}")
+            except Exception as e:
+                print(f"[Auto-Preview] Move failed: {e}, using temp path")
+                preview_path = temp_preview
 
             # Clean up old preview files (keep only the current one)
             try:
