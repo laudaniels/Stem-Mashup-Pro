@@ -105,7 +105,7 @@ class AudioStreamManager:
 
     def get_stream_url(self) -> str:
         """Get the stream URL for the audio player."""
-        return f"http://localhost:{self.server_port}/audio/stream"
+        return f"http://127.0.0.1:{self.server_port}/audio/stream"
 
     def update_settings(self, settings: dict):
         """
