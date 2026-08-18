@@ -464,7 +464,9 @@ class StudioState:
                 preview_path = temp_preview
 
             self.last_render_path = preview_path
-            return preview_path, "Preview generated and playing…"
+            # Return relative path for Gradio
+            rel_path = Path(preview_path).name  # Just the filename
+            return rel_path, "Preview generated and playing…"
         except Exception as e:
             return None, f"Preview error: {str(e)[:100]}"
 
