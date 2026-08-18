@@ -24,6 +24,8 @@ from datetime import datetime
 from mashup_engine import MashupEngine
 from audio_stream_manager import AudioStreamManager
 import logging
+from flask import Flask, send_file
+import mimetypes
 
 # Configure logging for audio streaming
 logging.basicConfig(level=logging.INFO)
@@ -1129,17 +1131,7 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            # Custom HTML5 player for streaming (bypasses Gradio SSRF)
-            output_audio_html = gr.HTML(
-                """<div style="display:flex; flex-direction:column; gap:10px;">
-                    <label style="font-weight:bold;">Output</label>
-                    <audio id="preview_player" controls style="width:100%; background:#1a1a2e; border-radius:8px; padding:10px;">
-                        <source id="preview_source" src="" type="audio/mpeg">
-                        Your browser does not support the audio element.
-                    </audio>
-                </div>""",
-                elem_id="output_audio_player"
-            )
+            output_audio_html = gr.Audio(label="Output", type="filepath", elem_id="output_audio_player", scale=2)
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
@@ -1153,7 +1145,7 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
             def update_output_audio():
-                # Set streaming URL if available, else file path via Gradio's /file= API
+                # Set streaming URL if available, else use Gradio File component workaround
                 if state.stream_manager.is_running:
                     stream_url = state.stream_manager.get_stream_url()
                     html = f"""<div style="display:flex; flex-direction:column; gap:10px;">
@@ -1165,17 +1157,9 @@ def create_app():
                     </div>"""
                     return gr.update(value=html)
                 elif state.last_render_path and Path(state.last_render_path).exists():
-                    # Use Gradio's /file= API to serve the file
-                    file_url = f"/file={state.last_render_path}"
-                    html = f"""<div style="display:flex; flex-direction:column; gap:10px;">
-                        <label style="font-weight:bold;">Output</label>
-                        <audio id="preview_player" controls style="width:100%; background:#1a1a2e; border-radius:8px; padding:10px;">
-                            <source id="preview_source" src="{file_url}" type="audio/mpeg">
-                            Your browser does not support the audio element.
-                        </audio>
-                    </div>"""
-                    return gr.update(value=html)
-                return gr.update(value="""<div style="color:#999;">No audio ready</div>""")
+                    # Return file path directly - Gradio will handle it
+                    return gr.update(value=state.last_render_path)
+                return gr.update(value=None)
 
         def preview_with_update():
             status = state.preview()
