@@ -277,10 +277,14 @@ class StudioState:
                     except Exception as e:
                         print(f"[Stems] ZIP error: {e}")
 
+                    print(f"[Stems] About to call _auto_generate_preview()...")
                     try:
                         self._auto_generate_preview()
+                        print("[Stems] _auto_generate_preview() completed")
                     except Exception as e:
-                        print(f"[Stems] Preview error: {e}")
+                        print(f"[Stems] Preview error: {type(e).__name__}: {e}")
+                        import traceback
+                        traceback.print_exc()
                 else:
                     print("[Stems] Not all stems ready yet")
 
@@ -432,10 +436,12 @@ class StudioState:
 
     def _auto_generate_preview(self):
         """Auto-generate preview when stems are ready. Stores in last_render_path."""
+        print(f"[Auto-Preview] ENTERED _auto_generate_preview()")
         try:
             if not self.stems_ready():
                 print("[Auto-Preview] Not starting - stems not ready yet")
                 return
+            print("[Auto-Preview] stems_ready() check PASSED")
 
             self.add_status("🎵 Auto-generating preview mix with current settings...")
             print("[Auto-Preview] Starting preview generation...")
