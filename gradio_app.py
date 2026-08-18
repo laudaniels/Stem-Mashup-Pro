@@ -1153,10 +1153,7 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio_html = gr.HTML(
-                '<audio id="preview_player" controls style="width:100%;"><source src="" type="audio/mpeg"></audio>',
-                elem_id="output_audio_player"
-            )
+            output_audio_html = gr.Audio(label="Output", type="filepath", scale=2, elem_id="output_audio_player")
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
@@ -1170,19 +1167,10 @@ def create_app():
                 return gr.update(value=None, interactive=False)
 
             def update_output_audio():
-                # Update HTML5 audio player with src URL
-                if state.stream_manager.is_running:
-                    stream_url = state.stream_manager.get_stream_url()
-                    src = stream_url
-                elif state.last_render_path and Path(state.last_render_path).exists():
-                    # Use custom /preview/ route for file serving
-                    filename = Path(state.last_render_path).name
-                    src = f"/preview/{filename}"
-                else:
-                    return gr.update(value='<audio id="preview_player" controls style="width:100%;"><source src="" type="audio/mpeg"></audio>')
-
-                html = f'<audio id="preview_player" controls style="width:100%;"><source src="{src}" type="audio/mpeg"></audio>'
-                return gr.update(value=html)
+                # Return file path for Gradio Audio component
+                if state.last_render_path and Path(state.last_render_path).exists():
+                    return gr.update(value=state.last_render_path)
+                return gr.update(value=None)
 
         def preview_with_update():
             status = state.preview()
