@@ -264,10 +264,13 @@ class StudioState:
                 print(f"[Stems] Running Demucs on: {[Path(p).name for p in song_paths_list]}")
                 self.add_status(f"⚙️ Running Demucs on {len(selected)} song(s)...")
                 created = self.engine.separate_stems(song_paths_list)
+                print(f"[Stems] separate_stems() returned: {type(created)}, len={len(list(created)) if created else 0}")
                 for (slot, _), stem_set in zip(selected, created):
+                    print(f"[Stems] Loop iter: slot={slot}, stem_set keys={list(stem_set.keys()) if stem_set else None}")
                     self.stem_paths[slot] = stem_set
                     print(f"[Stems] Song {slot+1} stems ready: {list(stem_set.keys())}")
                     self.add_status(f"✓ Song {slot+1} stems ready: Vocals, Beats, Bass, Other")
+                print(f"[Stems] Loop completed!")
 
                 # Auto-create ZIP file and preview when all stems are ready
                 print(f"[Stems] === CHECKING stems_ready() ===")
