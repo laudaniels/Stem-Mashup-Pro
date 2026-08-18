@@ -1342,9 +1342,14 @@ def create_app():
     @app.app.get("/preview/{filename}")
     async def serve_preview(filename: str):
         """Serve preview files from project root."""
+        print(f"[Preview Route] Requested: {filename}")
         file_path = BASE_DIR / filename
+        print(f"[Preview Route] Full path: {file_path}")
+        print(f"[Preview Route] Exists: {file_path.exists()}")
         if file_path.exists() and str(file_path).startswith(str(BASE_DIR)):
+            print(f"[Preview Route] Serving: {file_path}")
             return FileResponse(file_path, media_type="audio/mpeg")
+        print(f"[Preview Route] NOT FOUND: {file_path}")
         return {"error": "File not found"}, 404
 
     return app
