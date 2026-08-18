@@ -194,9 +194,18 @@ class StudioState:
                             self.stem_paths[slot] = stem_set[0]
                             self.add_status(f"✓ Song {slot+1}: Stems ready (Vocals, Beats, Bass, Other)")
 
-                            # Create ZIP when both songs' stems are ready
+                            # Create ZIP and preview when both songs' stems are ready
                             if self.stems_ready():
-                                self._create_stems_zip()
+                                print("[Analyze] stems_ready() = True, creating ZIP and preview...")
+                                try:
+                                    self._create_stems_zip()
+                                except Exception as e:
+                                    print(f"[Analyze] ZIP error: {e}")
+
+                                try:
+                                    self._auto_generate_preview()
+                                except Exception as e:
+                                    print(f"[Analyze] Preview error: {e}")
                         except Exception as sep_e:
                             self.add_status(f"❌ Song {slot+1}: Stem separation error: {sep_e}")
 
