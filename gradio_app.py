@@ -136,9 +136,8 @@ class StudioState:
         return self.song_paths[0] is not None and self.song_paths[1] is not None
 
     def stems_ready(self):
-        """Check if stems are separated for both songs."""
-        return (self.both_songs_loaded() and
-                self.stem_paths[0] is not None and
+        """Check if at least one song has separated stems."""
+        return (self.stem_paths[0] is not None or
                 self.stem_paths[1] is not None)
 
     def add_status(self, message):
