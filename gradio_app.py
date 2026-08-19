@@ -1271,26 +1271,35 @@ def create_app():
             loop_btn = gr.Button("▶ START LOOP", size="lg", scale=1, interactive=False, variant="primary")
             loop_status = gr.Textbox(label="Loop Status", value="Ready", interactive=False, scale=2)
 
-        # ===== Render =====
+        # ===== Preview, Loop & Render =====
         with gr.Row():
             gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
-        gr.Markdown("### Render")
+        gr.Markdown("### Preview & Render")
 
         with gr.Row():
-            preview_btn = gr.Button("▶ LIVE PREVIEW", size="lg", scale=1, interactive=False)
-            render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
+            with gr.Column(scale=1):
+                preview_btn = gr.Button("▶ LIVE PREVIEW", size="lg", interactive=False)
+                preview_status = gr.Textbox(label="Status", value="Ready", interactive=False)
+                output_audio_html = gr.Audio(
+                    label="Preview Output",
+                    type="filepath",
+                    elem_id="output_audio_player"
+                )
+            with gr.Column(scale=1):
+                render_btn = gr.Button("🎛️ RENDER FULL REMIX", size="lg", interactive=False)
+                render_status = gr.Textbox(label="Status", value="Ready", interactive=False)
+                render_audio_html = gr.Audio(
+                    label="Render Output",
+                    type="filepath",
+                    elem_id="render_audio_player"
+                )
 
-        with gr.Row():
-            output_audio_html = gr.Audio(
-                label="Output",
-                type="filepath",
-                scale=2,
-                elem_id="output_audio_player",
-                visible=True
-            )
-            # Hidden HTML player for future use
-            loop_audio_html = gr.HTML(label="Loop Player", value="", visible=False)
-            render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
+        gr.Markdown("### Real-Time Loop Player")
+        loop_audio_player = gr.Audio(
+            label="Loop Output",
+            type="filepath",
+            elem_id="loop_audio_player"
+        )
 
         # JavaScript to enable looping on audio player
         gr.HTML('''
@@ -1332,21 +1341,21 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            # Return file path to Gradio Audio component (shows waveform and loops)
+            # Return file path to loop Audio component (shows waveform and loops)
             if audio and Path(audio).exists():
-                return (status, gr.update(value=audio, visible=True), gr.update(value="", visible=False))
+                return (status, gr.update(value=audio))
             else:
-                return (status, gr.update(value=None, visible=True), gr.update(value="", visible=False))
+                return (status, gr.update(value=None))
 
         loop_btn.click(
             loop_with_update,
             inputs=[loop_start, loop_length],
-            outputs=[loop_status, output_audio_html, loop_audio_html]
+            outputs=[loop_status, loop_audio_player]
         )
 
         preview_btn.click(
             preview_with_update,
-            outputs=[render_status, output_audio_html]
+            outputs=[preview_status, output_audio_html]
         )
 
         def render_with_update():
@@ -1356,7 +1365,7 @@ def create_app():
 
         render_btn.click(
             render_with_update,
-            outputs=[render_status, output_audio_html]
+            outputs=[render_status, render_audio_html]
         )
 
         # ===== Cleanup =====
