@@ -33,7 +33,7 @@ class AudioStreamServer:
         """HTTP streaming endpoint for audio player."""
         logger.info("Stream requested")
 
-        # If using loop buffer (Phase 2), save to file and serve it
+        # If using loop buffer (Phase 2), serve complete audio file
         if self.loop_buffer:
             buffer_timeout = 10
             logger.info("Streaming from loop buffer")
@@ -42,30 +42,27 @@ class AudioStreamServer:
                 return Response(b"", status=503)
 
             try:
-                # Save loop buffer to temporary file
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-                loop_file = Path("/tmp") / f"loop_stream_{timestamp}.mp3"
-
+                # Get loop buffer data (make a copy to avoid buffer switching issues)
                 loop_data = bytes(self.loop_buffer.loop_buffer)
                 size = len(loop_data)
 
-                # Write to file
-                with open(loop_file, "wb") as f:
-                    f.write(loop_data)
+                if size == 0:
+                    logger.warning("[Stream] Loop buffer is empty!")
+                    return Response(b"", status=503)
 
-                logger.info(f"[Stream] Saved loop to {loop_file} ({size} bytes)")
+                logger.info(f"[Stream] Serving loop buffer: {size} bytes")
 
-                # Serve the file
-                from flask import send_file
-                return send_file(
-                    str(loop_file),
-                    mimetype="audio/mpeg",
-                    as_attachment=False,
-                    download_name="loop.mp3"
-                )
+                # Return complete audio file with proper headers
+                response = Response(loop_data, mimetype="audio/mpeg")
+                response.headers["Content-Length"] = str(size)
+                response.headers["Accept-Ranges"] = "bytes"
+                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                response.headers["Connection"] = "keep-alive"
+                logger.info(f"[Stream] Response headers set, sending {size} bytes")
+                return response
+
             except Exception as e:
-                logger.error(f"[Stream] Error serving loop file: {e}", exc_info=True)
+                logger.error(f"[Stream] Error serving loop: {e}", exc_info=True)
                 return Response(b"", status=500)
 
         # Fallback to circular buffer mode (Phase 1)
