@@ -524,6 +524,14 @@ class StudioState:
             print(f"[Loop] Starting loop: {self.loop_length}s")
             self.add_status(f"🎵 Rendering {loop_length_str} loop...")
 
+            # Start streaming server if needed
+            if not self.stream_manager.is_running:
+                self.stream_manager.start()
+                print("[Loop] ✓ Streaming server started")
+
+            # Tell server to stream from loop buffer
+            self.stream_manager.set_loop_buffer(self.loop_buffer)
+
             # Update loop buffer duration and start pre-render
             self.loop_buffer.loop_duration = self.loop_length
             self.loop_buffer.start_render(params)
@@ -1368,11 +1376,13 @@ def create_app():
             if audio and Path(audio).exists():
                 # Store path for slider callbacks
                 state.last_loop_file = audio
+                # Use the streaming server endpoint to serve the loop file
+                stream_url = "http://127.0.0.1:5001/audio/stream"
                 # Generate HTML that updates the audio source
                 html_content = f'''
                 <div id="loop_player_container" style="width: 100%; padding: 10px; background: #f0f0f0; border-radius: 8px;">
                     <audio id="loop_audio_player" style="width: 100%; height: 50px;" controls loop autoplay>
-                        <source src="file://{audio}" type="audio/mpeg">
+                        <source src="{stream_url}" type="audio/mpeg">
                         Your browser does not support the audio element.
                     </audio>
                     <div style="font-size: 12px; color: #666; margin-top: 5px;">
