@@ -100,6 +100,7 @@ class StudioState:
         self.loop_length = 20.0  # seconds (8 bars default)
         self.loop_active = False
         self.loop_version = 0  # Version counter for loop changes
+        self.last_loop_file = None  # Track last loop file for slider updates
         self.loop_buffer = LoopRenderBuffer(
             render_func=self._render_stream_chunk,
             loop_duration=20
@@ -1301,20 +1302,32 @@ def create_app():
                     elem_id="render_audio_player"
                 )
 
-        # JavaScript to enable looping on audio player
+        # JavaScript to enable looping and handle slider changes
         gr.HTML('''
         <script>
-            // Enable looping on audio players
+            // Enable looping on all audio players
             function enableAudioLooping() {
-                const audioPlayers = document.querySelectorAll('audio');
-                audioPlayers.forEach(player => {
+                // Target specific loop player
+                const loopPlayer = document.querySelector('#loop_audio_player audio');
+                if (loopPlayer) {
+                    loopPlayer.loop = true;
+                    loopPlayer.setAttribute('loop', 'loop');
+                    console.log('[Loop] Enabled looping on loop player');
+                }
+                // Also enable on all audio elements
+                const allPlayers = document.querySelectorAll('audio');
+                allPlayers.forEach(player => {
                     player.loop = true;
-                    console.log('[Audio Loop] Enabled looping on player');
                 });
             }
-            // Run on page load and periodically
+            // Run immediately and every 500ms
             enableAudioLooping();
-            setInterval(enableAudioLooping, 1000);
+            setInterval(enableAudioLooping, 500);
+
+            // Watch for audio source changes (slider updates)
+            document.addEventListener('change', function() {
+                setTimeout(enableAudioLooping, 100);
+            });
         </script>
         ''')
 
@@ -1343,8 +1356,11 @@ def create_app():
             audio, status = state.start_loop(start, length)
             # Return file path to loop Audio component (shows waveform and loops)
             if audio and Path(audio).exists():
+                # Store path for slider callbacks
+                state.last_loop_file = audio
                 return (status, gr.update(value=audio))
             else:
+                state.last_loop_file = None
                 return (status, gr.update(value=None))
 
         loop_btn.click(
