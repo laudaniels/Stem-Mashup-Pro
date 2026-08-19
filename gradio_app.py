@@ -1376,21 +1376,28 @@ def create_app():
             if audio and Path(audio).exists():
                 # Store path for slider callbacks
                 state.last_loop_file = audio
-                # Use the streaming server endpoint to serve the loop file
-                stream_url = "http://127.0.0.1:5001/audio/stream"
-                # Generate HTML that updates the audio source
-                html_content = f'''
-                <div id="loop_player_container" style="width: 100%; padding: 10px; background: #f0f0f0; border-radius: 8px;">
-                    <audio id="loop_audio_player" style="width: 100%; height: 50px;" controls loop autoplay>
-                        <source src="{stream_url}" type="audio/mpeg">
-                        Your browser does not support the audio element.
-                    </audio>
-                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                        🔄 Loop: Enabled | Audio will repeat continuously
+                # Read the MP3 file and encode as base64 for embedding
+                try:
+                    with open(audio, 'rb') as f:
+                        audio_data = f.read()
+                    import base64
+                    audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+                    # Generate HTML with embedded audio (data URI)
+                    html_content = f'''
+                    <div id="loop_player_container" style="width: 100%; padding: 10px; background: #f0f0f0; border-radius: 8px;">
+                        <audio id="loop_audio_player" style="width: 100%; height: 50px;" controls loop autoplay>
+                            <source src="data:audio/mpeg;base64,{audio_base64}" type="audio/mpeg">
+                            Your browser does not support the audio element.
+                        </audio>
+                        <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                            🔄 Loop: Enabled | Audio will repeat continuously
+                        </div>
                     </div>
-                </div>
-                '''
-                return (status, gr.update(value=html_content))
+                    '''
+                    return (status, gr.update(value=html_content))
+                except Exception as e:
+                    print(f"[Loop] Error encoding audio: {e}")
+                    return (status, gr.update(value='<p>Error loading loop</p>'))
             else:
                 state.last_loop_file = None
                 return (status, gr.update(value='<p>Ready for loop</p>'))
