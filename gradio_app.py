@@ -1271,6 +1271,13 @@ def create_app():
             loop_btn = gr.Button("▶ START LOOP", size="lg", scale=1, interactive=False, variant="primary")
             loop_status = gr.Textbox(label="Loop Status", value="Ready", interactive=False, scale=2)
 
+        with gr.Row():
+            loop_audio_player = gr.Audio(
+                label="Loop Output",
+                type="filepath",
+                elem_id="loop_audio_player"
+            )
+
         # ===== Preview, Loop & Render =====
         with gr.Row():
             gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
@@ -1293,13 +1300,6 @@ def create_app():
                     type="filepath",
                     elem_id="render_audio_player"
                 )
-
-        gr.Markdown("### Real-Time Loop Player")
-        loop_audio_player = gr.Audio(
-            label="Loop Output",
-            type="filepath",
-            elem_id="loop_audio_player"
-        )
 
         # JavaScript to enable looping on audio player
         gr.HTML('''
