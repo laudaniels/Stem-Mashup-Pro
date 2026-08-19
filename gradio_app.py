@@ -371,6 +371,13 @@ class StudioState:
         self.sliders[key] = value
         print(f"[Slider] {key} = {value}")
 
+        # If loop is active, trigger re-render on next iteration
+        if self.loop_active and self.loop_buffer.is_ready():
+            self.loop_version += 1
+            params = self.build_params()
+            self.loop_buffer.check_and_rerender(params, self.loop_version)
+            print(f"[Loop] Re-rendering with new settings (v{self.loop_version})")
+
         # Send settings update to streaming manager (Phase 2)
         if self.stream_manager.is_running:
             try:
@@ -382,23 +389,55 @@ class StudioState:
 
     def update_crossfader(self, value):
         self.crossfader = value
+        print(f"[Crossfader] = {value}")
+
+        # If loop is active, trigger re-render on next iteration
+        if self.loop_active and self.loop_buffer.is_ready():
+            self.loop_version += 1
+            params = self.build_params()
+            self.loop_buffer.check_and_rerender(params, self.loop_version)
+            print(f"[Loop] Re-rendering with new crossfader (v{self.loop_version})")
         print(f"[Crossfader] {value}% (Song 1 ← → Song 2)")
 
     def update_target_bpm(self, value):
         self.target_bpm = value or 0
         print(f"[Target BPM] {self.target_bpm}")
 
+        if self.loop_active and self.loop_buffer.is_ready():
+            self.loop_version += 1
+            params = self.build_params()
+            self.loop_buffer.check_and_rerender(params, self.loop_version)
+            print(f"[Loop] Re-rendering with new target BPM (v{self.loop_version})")
+
     def update_beatmatch(self, value):
         self.beatmatch = value
         print(f"[Beatmatch] {'enabled' if value else 'disabled'}")
+
+        if self.loop_active and self.loop_buffer.is_ready():
+            self.loop_version += 1
+            params = self.build_params()
+            self.loop_buffer.check_and_rerender(params, self.loop_version)
+            print(f"[Loop] Re-rendering with beatmatch change (v{self.loop_version})")
 
     def update_bpm_override(self, slot, value):
         self.bpm_overrides[slot] = value or 0.0
         print(f"[BPM Override] Song {slot+1} = {self.bpm_overrides[slot]} (0=auto)")
 
+        if self.loop_active and self.loop_buffer.is_ready():
+            self.loop_version += 1
+            params = self.build_params()
+            self.loop_buffer.check_and_rerender(params, self.loop_version)
+            print(f"[Loop] Re-rendering with BPM override change (v{self.loop_version})")
+
     def update_beat_offset(self, slot, value):
         self.beat_offsets[slot] = value or 0.0
         print(f"[Beat Offset] Song {slot+1} = {self.beat_offsets[slot]}s")
+
+        if self.loop_active and self.loop_buffer.is_ready():
+            self.loop_version += 1
+            params = self.build_params()
+            self.loop_buffer.check_and_rerender(params, self.loop_version)
+            print(f"[Loop] Re-rendering with beat offset change (v{self.loop_version})")
 
     def update_key_override(self, slot, value):
         """Update key override from dropdown selection."""
@@ -406,6 +445,12 @@ class StudioState:
             self.key_overrides[slot] = KEY_NAMES.index(value)
             self.pitch_manually_changed[slot] = False  # Reset so pitch dropdown updates
             print(f"[Key Override] Song {slot+1} = {value}")
+
+            if self.loop_active and self.loop_buffer.is_ready():
+                self.loop_version += 1
+                params = self.build_params()
+                self.loop_buffer.check_and_rerender(params, self.loop_version)
+                print(f"[Loop] Re-rendering with key override change (v{self.loop_version})")
             self.add_status(f"🎹 Song {slot+1} key override: {value}")
         else:
             self.key_overrides[slot] = -1
