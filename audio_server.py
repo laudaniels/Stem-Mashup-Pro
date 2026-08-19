@@ -33,7 +33,7 @@ class AudioStreamServer:
         """HTTP streaming endpoint for audio player."""
         logger.info("Stream requested")
 
-        # If using loop buffer (Phase 2), send the pre-rendered loop once
+        # If using loop buffer (Phase 2), save to file and serve it
         if self.loop_buffer:
             buffer_timeout = 10
             logger.info("Streaming from loop buffer")
@@ -41,19 +41,32 @@ class AudioStreamServer:
                 logger.warning("Loop buffer not ready in time")
                 return Response(b"", status=503)
 
-            # Get complete loop data
-            loop_data = bytes(self.loop_buffer.loop_buffer)
-            size = len(loop_data)
-            logger.info(f"[Stream] Sending complete loop: {size} bytes")
+            try:
+                # Save loop buffer to temporary file
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                loop_file = Path("/tmp") / f"loop_stream_{timestamp}.mp3"
 
-            # Create response object with explicit headers
-            response = Response(loop_data, mimetype="audio/mpeg")
-            response.headers["Content-Length"] = size
-            response.headers["Accept-Ranges"] = "bytes"
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            # Remove Transfer-Encoding if Flask added it
-            response.direct_passthrough = False
-            return response
+                loop_data = bytes(self.loop_buffer.loop_buffer)
+                size = len(loop_data)
+
+                # Write to file
+                with open(loop_file, "wb") as f:
+                    f.write(loop_data)
+
+                logger.info(f"[Stream] Saved loop to {loop_file} ({size} bytes)")
+
+                # Serve the file
+                from flask import send_file
+                return send_file(
+                    str(loop_file),
+                    mimetype="audio/mpeg",
+                    as_attachment=False,
+                    download_name="loop.mp3"
+                )
+            except Exception as e:
+                logger.error(f"[Stream] Error serving loop file: {e}", exc_info=True)
+                return Response(b"", status=500)
 
         # Fallback to circular buffer mode (Phase 1)
         def generate():
