@@ -523,24 +523,27 @@ class StudioState:
             print(f"[Loop] Starting loop: {self.loop_length}s")
             self.add_status(f"🎵 Rendering {loop_length_str} loop...")
 
-            # Start streaming server if needed
-            if not self.stream_manager.is_running:
-                self.stream_manager.start()
-                print("[Loop] ✓ Streaming server started")
-
             # Update loop buffer duration and start pre-render
             self.loop_buffer.loop_duration = self.loop_length
             self.loop_buffer.start_render(params)
 
-            # Tell server to stream from loop buffer
-            self.stream_manager.set_loop_buffer(self.loop_buffer)
-
             # Wait for loop to be ready
             if self.loop_buffer.wait_for_ready(timeout=60):
-                stream_url = self.stream_manager.get_stream_url()
+                # Save loop to file for Gradio Audio component (shows waveform)
+                import shutil
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                loop_filename = f"loop_{timestamp}.mp3"
+                loop_path = str(BASE_DIR / loop_filename)
+
+                # Get loop data and save to file
+                loop_data = bytes(self.loop_buffer.loop_buffer)
+                with open(loop_path, "wb") as f:
+                    f.write(loop_data)
+
+                self.last_render_path = loop_path
                 self.add_status(f"✨ Loop ready! Playing ({loop_length_str})")
-                print(f"[Loop] ✓ Ready and streaming from {stream_url}")
-                return stream_url, f"✓ Loop playing ({loop_length_str})"
+                print(f"[Loop] ✓ Saved to {loop_path} ({len(loop_data)} bytes)")
+                return loop_path, f"✓ Loop playing ({loop_length_str})"
             else:
                 return None, "Loop render timeout"
 
@@ -1278,9 +1281,33 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio_html = gr.Audio(label="Output", type="filepath", scale=2, elem_id="output_audio_player", visible=True)
+            output_audio_html = gr.Audio(
+                label="Output",
+                type="filepath",
+                scale=2,
+                elem_id="output_audio_player",
+                visible=True
+            )
+            # Hidden HTML player for future use
             loop_audio_html = gr.HTML(label="Loop Player", value="", visible=False)
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
+
+        # JavaScript to enable looping on audio player
+        gr.HTML('''
+        <script>
+            // Enable looping on audio players
+            function enableAudioLooping() {
+                const audioPlayers = document.querySelectorAll('audio');
+                audioPlayers.forEach(player => {
+                    player.loop = true;
+                    console.log('[Audio Loop] Enabled looping on player');
+                });
+            }
+            // Run on page load and periodically
+            enableAudioLooping();
+            setInterval(enableAudioLooping, 1000);
+        </script>
+        ''')
 
         with gr.Row():
             render_files_zip = gr.File(label="📥 Download Render + Stems (ZIP)", type="filepath", scale=1, file_count="single", file_types=[".zip"], elem_id="render_files_zip")
@@ -1305,16 +1332,8 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            # For streaming URLs, use HTML to bypass Gradio's SSRF validation
-            if audio and (audio.startswith("http://") or audio.startswith("https://")):
-                html = f'''
-                <audio controls loop style="width: 100%; height: 50px;">
-                    <source src="{audio}" type="audio/mpeg">
-                    Your browser does not support the audio element.
-                </audio>
-                '''
-                return (status, gr.update(value=None, visible=False), gr.update(value=html, visible=True))
-            elif audio and Path(audio).exists():
+            # Return file path to Gradio Audio component (shows waveform and loops)
+            if audio and Path(audio).exists():
                 return (status, gr.update(value=audio, visible=True), gr.update(value="", visible=False))
             else:
                 return (status, gr.update(value=None, visible=True), gr.update(value="", visible=False))
