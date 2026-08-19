@@ -582,10 +582,8 @@ class StudioState:
 
             # Wait for loop to be ready
             if self.loop_buffer.wait_for_ready(timeout=60):
-                # Save loop to file for Gradio Audio component (shows waveform)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                loop_filename = f"loop_{timestamp}.mp3"
-                loop_path = str(BASE_DIR / loop_filename)
+                # Use a fixed filename that we'll overwrite for real-time updates
+                loop_path = str(BASE_DIR / "loop_current.mp3")
 
                 # Get loop data and save to file
                 loop_data = bytes(self.loop_buffer.loop_buffer)
@@ -1354,19 +1352,20 @@ def create_app():
                     elem_id="render_audio_player"
                 )
 
-        # JavaScript for loop player control
+        # JavaScript for loop player control with file change detection
         gr.HTML('''
         <script>
+            let lastLoopFileSize = 0;
+
             function setupLoopPlayback() {
-                // Find the loop audio player element
                 const audioElements = document.querySelectorAll('#loop_audio_player audio');
                 audioElements.forEach(loopAudio => {
                     if (!loopAudio.hasAttribute('data-loop-setup')) {
-                        // Ensure loop attribute is always set
+                        // Set loop attribute for continuous playback
                         loopAudio.loop = true;
                         loopAudio.setAttribute('loop', 'loop');
 
-                        // Fallback: listen for ended event for older browsers
+                        // Primary loop handler: restart on ended
                         loopAudio.addEventListener('ended', () => {
                             loopAudio.currentTime = 0;
                             loopAudio.play().catch(e => console.log('[Loop] Autoplay prevented:', e));
@@ -1378,8 +1377,41 @@ def create_app():
                 });
             }
 
-            // Run periodically to catch newly created audio elements
+            // Detect file changes and reload player
+            function checkAndReloadLoop() {
+                const audioElements = document.querySelectorAll('#loop_audio_player audio');
+                if (audioElements.length === 0) return;
+
+                const audio = audioElements[0];
+                if (!audio.src || !audio.src.includes('loop_current.mp3')) return;
+
+                // Check if file has changed by comparing size
+                fetch(audio.src + '?t=' + Date.now(), {method: 'HEAD'})
+                    .then(resp => {
+                        const fileSize = resp.headers.get('content-length');
+                        if (fileSize && lastLoopFileSize > 0 && fileSize != lastLoopFileSize) {
+                            console.log('[Loop] File updated: ' + lastLoopFileSize + ' → ' + fileSize + ' bytes');
+                            lastLoopFileSize = fileSize;
+
+                            // Force reload: pause and reload src to bust cache
+                            const wasPlaying = !audio.paused;
+                            audio.pause();
+                            audio.src = audio.src.split('?')[0] + '?t=' + Date.now();
+                            audio.load();
+                            if (wasPlaying) {
+                                audio.play().catch(e => console.log('[Loop] Play prevented:', e));
+                            }
+                            console.log('[Loop] Reloaded with updated audio');
+                        } else if (!lastLoopFileSize && fileSize) {
+                            lastLoopFileSize = fileSize;
+                        }
+                    })
+                    .catch(e => console.log('[Loop] File check error:', e));
+            }
+
+            // Run periodic checks
             setInterval(setupLoopPlayback, 500);
+            setInterval(checkAndReloadLoop, 1000);
         </script>
         ''')
 
