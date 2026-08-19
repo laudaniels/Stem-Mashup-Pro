@@ -1280,18 +1280,12 @@ def create_app():
             loop_btn = gr.Button("▶ START LOOP", size="lg", scale=1, interactive=False, variant="primary")
             loop_status = gr.Textbox(label="Loop Status", value="Ready", interactive=False, scale=2)
 
-        # Custom looped audio player with explicit loop control
-        loop_player_html = gr.HTML(value='''
-        <div id="loop_player_container" style="width: 100%; padding: 10px; background: #f0f0f0; border-radius: 8px;">
-            <audio id="loop_audio_player" style="width: 100%; height: 50px;" controls loop>
-                <source src="" type="audio/mpeg">
-                Your browser does not support the audio element.
-            </audio>
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                🔄 Loop: Enabled | Audio will repeat continuously
-            </div>
-        </div>
-        ''', elem_id="loop_player_html")
+        # Audio player for loop - use Gradio's Audio component
+        loop_audio_player = gr.Audio(
+            label="Loop Output",
+            type="filepath",
+            elem_id="loop_audio_player"
+        )
 
         # ===== Preview, Loop & Render =====
         with gr.Row():
@@ -1372,40 +1366,18 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            # Update custom HTML audio player with the loop file
+            # Return file path to Gradio Audio component
             if audio and Path(audio).exists():
-                # Store path for slider callbacks
-                state.last_loop_file = audio
-                # Read the MP3 file and encode as base64 for embedding
-                try:
-                    with open(audio, 'rb') as f:
-                        audio_data = f.read()
-                    import base64
-                    audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-                    # Generate HTML with embedded audio (data URI)
-                    html_content = f'''
-                    <div id="loop_player_container" style="width: 100%; padding: 10px; background: #f0f0f0; border-radius: 8px;">
-                        <audio id="loop_audio_player" style="width: 100%; height: 50px;" controls loop autoplay>
-                            <source src="data:audio/mpeg;base64,{audio_base64}" type="audio/mpeg">
-                            Your browser does not support the audio element.
-                        </audio>
-                        <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                            🔄 Loop: Enabled | Audio will repeat continuously
-                        </div>
-                    </div>
-                    '''
-                    return (status, gr.update(value=html_content))
-                except Exception as e:
-                    print(f"[Loop] Error encoding audio: {e}")
-                    return (status, gr.update(value='<p>Error loading loop</p>'))
+                print(f"[Loop] Returning audio file: {audio}")
+                return (status, gr.update(value=audio))
             else:
-                state.last_loop_file = None
-                return (status, gr.update(value='<p>Ready for loop</p>'))
+                print(f"[Loop] No audio file to return")
+                return (status, gr.update(value=None))
 
         loop_btn.click(
             loop_with_update,
             inputs=[loop_start, loop_length],
-            outputs=[loop_status, loop_player_html]
+            outputs=[loop_status, loop_audio_player]
         )
 
         preview_btn.click(
