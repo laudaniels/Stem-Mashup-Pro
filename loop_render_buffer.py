@@ -22,7 +22,8 @@ class LoopRenderBuffer:
         """
         self.render_func = render_func
         self.loop_duration = loop_duration
-        self.loop_buffer = bytearray()
+        self.loop_buffer = bytearray()  # Current active buffer
+        self.next_buffer = bytearray()  # Pre-rendering buffer for next iteration
         self.read_pos = 0
         self.is_rendering = False
         self.loop_ready = threading.Event()
@@ -34,8 +35,8 @@ class LoopRenderBuffer:
     def start_render(self, settings: dict):
         """Start pre-rendering loop with given settings."""
         with self.lock:
+            # Don't clear loop_buffer if it's being streamed; render to next_buffer instead
             self.loop_ready.clear()
-            self.loop_buffer.clear()
             self.read_pos = 0
 
         logger.info(f"[LoopBuffer] Starting pre-render: {self.loop_duration}s loop")
@@ -61,8 +62,14 @@ class LoopRenderBuffer:
 
             if audio_data:
                 with self.lock:
-                    self.loop_buffer = bytearray(audio_data)
-                    self.read_pos = 0
+                    # If we already have a buffer, render to next_buffer to avoid dropouts
+                    if self.loop_buffer:
+                        self.next_buffer = bytearray(audio_data)
+                        logger.info("[LoopBuffer] Rendered to next_buffer, will switch on next iteration")
+                    else:
+                        # First render, use main buffer
+                        self.loop_buffer = bytearray(audio_data)
+                        self.read_pos = 0
 
                 elapsed = time.time() - start
                 logger.info(
@@ -80,6 +87,7 @@ class LoopRenderBuffer:
     def read_chunk(self, chunk_size: int = 4096) -> Optional[bytes]:
         """
         Read next chunk from loop buffer (with looping).
+        Automatically switches to next_buffer when current loop completes.
 
         Returns:
             Audio bytes, or None if not ready
@@ -91,10 +99,17 @@ class LoopRenderBuffer:
             if not self.loop_buffer:
                 return None
 
+            # Check if we should switch to next_buffer at loop boundary
+            buffer_size = len(self.loop_buffer)
+            if self.read_pos == 0 and self.next_buffer:
+                logger.info("[LoopBuffer] Switching to next_buffer at loop boundary")
+                self.loop_buffer = self.next_buffer
+                self.next_buffer = bytearray()
+                buffer_size = len(self.loop_buffer)
+
             # Read with wraparound
             chunk = bytearray()
             remaining = chunk_size
-            buffer_size = len(self.loop_buffer)
 
             while remaining > 0:
                 # How much until end of buffer?
