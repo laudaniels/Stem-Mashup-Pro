@@ -94,6 +94,12 @@ class StudioState:
         self.target_bpm = 0
         self.beatmatch = False
 
+        # Loop-based real-time playback
+        self.loop_start = 0.0  # seconds
+        self.loop_length = 20.0  # seconds (8 bars default)
+        self.loop_active = False
+        self.loop_version = 0  # Version counter for loop changes
+
         # Initialize audio streaming manager for Phase 2
         self.stream_manager = AudioStreamManager(
             render_func=self._render_stream_chunk,
@@ -441,6 +447,45 @@ class StudioState:
             "sliders": self.sliders.copy(),
             "crossfader": self.crossfader,
         }
+
+    def start_loop(self, loop_start: float, loop_length_str: str):
+        """Start loop-based real-time playback."""
+        try:
+            # Parse loop length
+            length_map = {"4 bars (10s)": 10.0, "8 bars (20s)": 20.0, "16 bars (40s)": 40.0}
+            loop_length = length_map.get(loop_length_str, 20.0)
+
+            self.loop_start = loop_start
+            self.loop_length = loop_length
+            self.loop_active = True
+            self.loop_version += 1
+
+            # Render the loop
+            params = self.build_params()
+            if not params["songs"][0] and not params["songs"][1]:
+                return None, "Load Song 1 before starting loop."
+
+            print(f"[Loop] Starting loop: {loop_start}s → {loop_start + loop_length}s")
+            self.add_status(f"🎵 Loop: {loop_start:.1f}s - {loop_start + loop_length:.1f}s ({loop_length_str})")
+
+            # Generate the loop file
+            temp_file = self.engine.render(params, preview=True, preview_duration=int(loop_length))
+
+            if temp_file and Path(temp_file).exists():
+                import shutil
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                loop_filename = f"loop_{timestamp}.mp3"
+                loop_path = str(BASE_DIR / loop_filename)
+                shutil.move(temp_file, loop_path)
+                self.last_render_path = loop_path
+                self.add_status("✨ Loop ready! Playing...")
+                return loop_path, f"✓ Loop playing ({loop_length_str})"
+            else:
+                return None, "Loop render failed"
+
+        except Exception as e:
+            return None, f"Loop error: {str(e)[:50]}"
 
     def preview(self):
         """Render a 60-second preview."""
@@ -1143,6 +1188,19 @@ def create_app():
             outputs=[preset_status]
         )
 
+        # ===== Loop-Based Real-Time =====
+        with gr.Row():
+            gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
+        gr.Markdown("### Real-Time Loop")
+
+        with gr.Row():
+            loop_start = gr.Slider(label="Loop Start (seconds)", minimum=0, maximum=120, step=0.5, value=0, scale=2)
+            loop_length = gr.Dropdown(label="Loop Length", choices=["4 bars (10s)", "8 bars (20s)", "16 bars (40s)"], value="8 bars (20s)", scale=1)
+
+        with gr.Row():
+            loop_btn = gr.Button("▶ START LOOP", size="lg", scale=1, interactive=False, variant="primary")
+            loop_status = gr.Textbox(label="Loop Status", value="Ready", interactive=False, scale=2)
+
         # ===== Render =====
         with gr.Row():
             gr.HTML('<div style="width: 100%; height: 1px; background: linear-gradient(90deg, #6366f1, #8b5cf6, transparent);"></div>')
@@ -1176,6 +1234,17 @@ def create_app():
             status = state.preview()
             audio_html = update_output_audio()
             return (status, audio_html)
+
+        def loop_with_update(start, length):
+            audio, status = state.start_loop(start, length)
+            audio_html = update_output_audio()
+            return (status, audio_html)
+
+        loop_btn.click(
+            loop_with_update,
+            inputs=[loop_start, loop_length],
+            outputs=[loop_status, output_audio_html]
+        )
 
         preview_btn.click(
             preview_with_update,
@@ -1266,7 +1335,7 @@ def create_app():
                 pitch_text = (f"{abs_diff} steps: Shift Song 2 {diff:+d} semitones to {song1_key}, "
                              f"or middle ({mid_key}): Song 1 {mid_shift_s1:+.1f}, Song 2 {mid_shift_s2:+.1f}")
 
-            updates = [status_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
+            updates = [status_update, gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(interactive=stems_ready), gr.update(value=pitch_text),
                       gr.update(value=bpm1_text), gr.update(value=key1_text), gr.update(value=bpm2_text), gr.update(value=key2_text),
                       pitch1_update, pitch2_update]
             # Update all sliders
@@ -1289,7 +1358,7 @@ def create_app():
 
         status_refresh_timer.tick(
             update_all,
-            outputs=[separate_status, preview_btn, render_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip, output_audio_html]
+            outputs=[separate_status, preview_btn, render_btn, loop_btn, pitch_suggestion, bpm_displays[0], key_displays[0], bpm_displays[1], key_displays[1], pitch_dropdowns[0], pitch_dropdowns[1]] + slider_outputs + [stems_download, render_files_zip, output_audio_html]
         )
 
         # CSS for styling (script is now in head parameter)
