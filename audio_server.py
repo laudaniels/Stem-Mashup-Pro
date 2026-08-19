@@ -31,67 +31,64 @@ class AudioStreamServer:
 
     def stream_audio(self):
         """HTTP streaming endpoint for audio player."""
-        chunk_size = 4096  # 4KB chunks
-        buffer_timeout = 10  # seconds to wait for buffer data
+        logger.info("Stream requested")
 
+        # If using loop buffer (Phase 2), send the pre-rendered loop once
+        if self.loop_buffer:
+            buffer_timeout = 10
+            logger.info("Streaming from loop buffer")
+            if not self.loop_buffer.wait_for_ready(timeout=buffer_timeout):
+                logger.warning("Loop buffer not ready in time")
+                return Response(b"", status=503)
+
+            # Get complete loop data
+            loop_data = bytes(self.loop_buffer.loop_buffer)
+            logger.info(f"[Stream] Sending complete loop: {len(loop_data)} bytes")
+
+            # Send as complete file with proper headers
+            return Response(
+                loop_data,
+                mimetype="audio/mpeg",
+                headers={
+                    "Content-Length": str(len(loop_data)),
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                }
+            )
+
+        # Fallback to circular buffer mode (Phase 1)
         def generate():
             """Generator function for Flask streaming."""
+            chunk_size = 4096
+            buffer_timeout = 10
             chunks_sent = 0
-            logger.info("Stream started")
+            logger.info("Streaming from circular buffer")
 
-            # If using loop buffer (Phase 2), send the pre-rendered loop once
-            # Browser will handle looping via HTML5 loop attribute
-            if self.loop_buffer:
-                logger.info("Streaming from loop buffer (send once)")
-                if not self.loop_buffer.wait_for_ready(timeout=buffer_timeout):
-                    logger.warning("Loop buffer not ready in time")
-                    return
+            while self.running:
+                # Wait for data to be available in buffer
+                start_time = time.time()
+                while len(self.state.audio_buffer) == 0 and self.running:
+                    elapsed = time.time() - start_time
+                    if elapsed > buffer_timeout:
+                        logger.warning(f"Timeout waiting for buffer after {elapsed:.1f}s")
+                        yield b""
+                        return  # Stop streaming if no data
 
-                logger.info(f"[Stream] Loop buffer ready, size: {len(self.loop_buffer.loop_buffer)} bytes")
-                # Send the entire pre-rendered loop at once
-                loop_data = bytes(self.loop_buffer.loop_buffer)
-                logger.info(f"[Stream] Sending {len(loop_data)} bytes of loop audio")
+                    time.sleep(0.05)
 
-                # Send in chunks for efficient streaming
-                bytes_sent = 0
-                while bytes_sent < len(loop_data) and self.running:
-                    end = min(bytes_sent + chunk_size, len(loop_data))
-                    chunk = loop_data[bytes_sent:end]
-                    if chunk:
-                        yield chunk
-                        bytes_sent += len(chunk)
-                        chunks_sent += 1
-                        if chunks_sent % 50 == 0:
-                            logger.debug(f"[Stream] Sent {chunks_sent} chunks ({bytes_sent / 1024 / 1024:.1f}/{len(loop_data)/1024/1024:.1f} MB)")
+                if not self.running:
+                    break
 
-                logger.info(f"[Stream] Completed: sent {len(loop_data)} bytes")
-            else:
-                # Use circular buffer (AudioStreamState)
-                logger.info("Streaming from circular buffer")
-                while self.running:
-                    # Wait for data to be available in buffer
-                    start_time = time.time()
-                    while len(self.state.audio_buffer) == 0 and self.running:
-                        elapsed = time.time() - start_time
-                        if elapsed > buffer_timeout:
-                            logger.warning(f"Timeout waiting for buffer after {elapsed:.1f}s")
-                            yield b""
-                            return  # Stop streaming if no data
-
-                        time.sleep(0.05)
-
-                    if not self.running:
-                        break
-
-                    # Read chunk from buffer
-                    chunk = self.state.read_chunk(chunk_size)
-                    if chunk:
-                        chunks_sent += 1
-                        yield chunk
-                        if chunks_sent % 100 == 0:
-                            logger.debug(f"Sent {chunks_sent} chunks, buffer: {len(self.state.audio_buffer)} bytes")
-                    else:
-                        time.sleep(0.01)
+                # Read chunk from buffer
+                chunk = self.state.read_chunk(chunk_size)
+                if chunk:
+                    chunks_sent += 1
+                    yield chunk
+                    if chunks_sent % 100 == 0:
+                        logger.debug(f"Sent {chunks_sent} chunks, buffer: {len(self.state.audio_buffer)} bytes")
+                else:
+                    time.sleep(0.01)
 
             logger.info(f"Stream ended after {chunks_sent} chunks")
 
