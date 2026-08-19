@@ -1308,31 +1308,35 @@ def create_app():
                     elem_id="render_audio_player"
                 )
 
-        # JavaScript to enable looping and handle slider changes
+        # JavaScript for loop player control and auto-reload on slider changes
         gr.HTML('''
         <script>
-            // Enable looping on all audio players
-            function enableAudioLooping() {
-                // Target specific loop player
-                const loopPlayer = document.querySelector('#loop_audio_player audio');
-                if (loopPlayer) {
-                    loopPlayer.loop = true;
-                    loopPlayer.setAttribute('loop', 'loop');
-                    console.log('[Loop] Enabled looping on loop player');
+            // Auto-reload loop player when a new loop file is rendered
+            let lastLoopContent = '';
+            function checkLoopUpdates() {
+                const loopContainer = document.querySelector('#loop_player_container');
+                if (loopContainer && loopContainer.innerHTML !== lastLoopContent) {
+                    lastLoopContent = loopContainer.innerHTML;
+                    const audioPlayer = loopContainer.querySelector('audio');
+                    if (audioPlayer) {
+                        // Ensure loop attribute is set
+                        audioPlayer.loop = true;
+                        audioPlayer.setAttribute('loop', 'loop');
+                        // Pause and reload to reset position
+                        audioPlayer.pause();
+                        audioPlayer.currentTime = 0;
+                        // Autoplay the new loop
+                        audioPlayer.play().catch(e => console.log('[Loop] Autoplay prevented:', e));
+                        console.log('[Loop] Reloaded with new settings');
+                    }
                 }
-                // Also enable on all audio elements
-                const allPlayers = document.querySelectorAll('audio');
-                allPlayers.forEach(player => {
-                    player.loop = true;
-                });
             }
-            // Run immediately and every 500ms
-            enableAudioLooping();
-            setInterval(enableAudioLooping, 500);
+            // Check for updates every 500ms
+            setInterval(checkLoopUpdates, 500);
 
-            // Watch for audio source changes (slider updates)
-            document.addEventListener('change', function() {
-                setTimeout(enableAudioLooping, 100);
+            // Also trigger on slider changes
+            document.addEventListener('change', () => {
+                setTimeout(checkLoopUpdates, 100);
             });
         </script>
         ''')
