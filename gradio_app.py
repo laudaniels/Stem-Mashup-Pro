@@ -1302,7 +1302,7 @@ def create_app():
             # For streaming URLs, use HTML to bypass Gradio's SSRF validation
             if audio and (audio.startswith("http://") or audio.startswith("https://")):
                 html = f'''
-                <audio controls style="width: 100%; height: 50px;">
+                <audio controls loop style="width: 100%; height: 50px;">
                     <source src="{audio}" type="audio/mpeg">
                     Your browser does not support the audio element.
                 </audio>

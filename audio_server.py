@@ -39,22 +39,32 @@ class AudioStreamServer:
             chunks_sent = 0
             logger.info("Stream started")
 
-            # If using loop buffer (Phase 2), stream from that instead
+            # If using loop buffer (Phase 2), send the pre-rendered loop once
+            # Browser will handle looping via HTML5 loop attribute
             if self.loop_buffer:
-                logger.info("Streaming from loop buffer")
+                logger.info("Streaming from loop buffer (send once)")
                 if not self.loop_buffer.wait_for_ready(timeout=buffer_timeout):
                     logger.warning("Loop buffer not ready in time")
                     return
 
-                while self.running:
-                    chunk = self.loop_buffer.read_chunk(chunk_size)
+                logger.info(f"[Stream] Loop buffer ready, size: {len(self.loop_buffer.loop_buffer)} bytes")
+                # Send the entire pre-rendered loop at once
+                loop_data = bytes(self.loop_buffer.loop_buffer)
+                logger.info(f"[Stream] Sending {len(loop_data)} bytes of loop audio")
+
+                # Send in chunks for efficient streaming
+                bytes_sent = 0
+                while bytes_sent < len(loop_data) and self.running:
+                    end = min(bytes_sent + chunk_size, len(loop_data))
+                    chunk = loop_data[bytes_sent:end]
                     if chunk:
-                        chunks_sent += 1
                         yield chunk
-                        if chunks_sent % 100 == 0:
-                            logger.debug(f"Sent {chunks_sent} chunks")
-                    else:
-                        time.sleep(0.01)
+                        bytes_sent += len(chunk)
+                        chunks_sent += 1
+                        if chunks_sent % 50 == 0:
+                            logger.debug(f"[Stream] Sent {chunks_sent} chunks ({bytes_sent / 1024 / 1024:.1f}/{len(loop_data)/1024/1024:.1f} MB)")
+
+                logger.info(f"[Stream] Completed: sent {len(loop_data)} bytes")
             else:
                 # Use circular buffer (AudioStreamState)
                 logger.info("Streaming from circular buffer")
@@ -85,7 +95,15 @@ class AudioStreamServer:
 
             logger.info(f"Stream ended after {chunks_sent} chunks")
 
-        return Response(generate(), mimetype="audio/mpeg")
+        return Response(
+            generate(),
+            mimetype="audio/mpeg",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Connection": "keep-alive",
+                "Transfer-Encoding": "chunked",
+            }
+        )
 
     def update_settings(self):
         """Receive updated settings from Gradio."""

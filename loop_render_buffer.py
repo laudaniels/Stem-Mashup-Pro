@@ -93,10 +93,12 @@ class LoopRenderBuffer:
             Audio bytes, or None if not ready
         """
         if not self.loop_ready.is_set():
+            logger.debug("[read_chunk] Loop not ready yet")
             return None
 
         with self.lock:
             if not self.loop_buffer:
+                logger.warning("[read_chunk] No loop buffer!")
                 return None
 
             # Check if we should switch to next_buffer at loop boundary
