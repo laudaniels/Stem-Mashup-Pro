@@ -373,6 +373,38 @@ class StudioState:
             print(f"[Stems] ZIP creation error: {e}")
             self.add_status(f"❌ ZIP creation error: {e}")
 
+    def _save_loop_buffer_to_file(self):
+        """Save current loop buffer to file for playback."""
+        if self.loop_active and self.loop_buffer.is_ready():
+            try:
+                loop_data = bytes(self.loop_buffer.loop_buffer)
+                if loop_data and self.last_loop_file:
+                    with open(self.last_loop_file, "wb") as f:
+                        f.write(loop_data)
+                    print(f"[Loop] ✓ Updated loop file: {len(loop_data)} bytes")
+                    return self.last_loop_file
+            except Exception as e:
+                print(f"[Loop] Error saving buffer: {e}")
+        return None
+
+    def _trigger_loop_update_if_active(self):
+        """Trigger loop re-render and save when complete (if loop is active)."""
+        if not (self.loop_active and self.loop_buffer.is_ready()):
+            return
+
+        def save_when_ready():
+            max_attempts = 60
+            for _ in range(max_attempts):
+                import time
+                time.sleep(0.2)
+                if self.loop_buffer.is_ready() and not self.loop_buffer.is_rendering:
+                    self._save_loop_buffer_to_file()
+                    break
+
+        import threading
+        save_thread = threading.Thread(target=save_when_ready, daemon=True)
+        save_thread.start()
+
     def update_slider(self, key, value):
         self.sliders[key] = value
         print(f"[Slider] {key} = {value}")
@@ -383,6 +415,7 @@ class StudioState:
             params = self.build_params()
             self.loop_buffer.check_and_rerender(params, self.loop_version)
             print(f"[Loop] Re-rendering with new settings (v{self.loop_version})")
+            self._trigger_loop_update_if_active()
 
         # Send settings update to streaming manager (Phase 2)
         if self.stream_manager.is_running:
@@ -403,6 +436,7 @@ class StudioState:
             params = self.build_params()
             self.loop_buffer.check_and_rerender(params, self.loop_version)
             print(f"[Loop] Re-rendering with new crossfader (v{self.loop_version})")
+            self._trigger_loop_update_if_active()
         print(f"[Crossfader] {value}% (Song 1 ← → Song 2)")
 
     def update_target_bpm(self, value):
@@ -414,6 +448,7 @@ class StudioState:
             params = self.build_params()
             self.loop_buffer.check_and_rerender(params, self.loop_version)
             print(f"[Loop] Re-rendering with new target BPM (v{self.loop_version})")
+            self._trigger_loop_update_if_active()
 
     def update_beatmatch(self, value):
         self.beatmatch = value
@@ -424,6 +459,7 @@ class StudioState:
             params = self.build_params()
             self.loop_buffer.check_and_rerender(params, self.loop_version)
             print(f"[Loop] Re-rendering with beatmatch change (v{self.loop_version})")
+            self._trigger_loop_update_if_active()
 
     def update_bpm_override(self, slot, value):
         self.bpm_overrides[slot] = value or 0.0
@@ -434,6 +470,7 @@ class StudioState:
             params = self.build_params()
             self.loop_buffer.check_and_rerender(params, self.loop_version)
             print(f"[Loop] Re-rendering with BPM override change (v{self.loop_version})")
+            self._trigger_loop_update_if_active()
 
     def update_beat_offset(self, slot, value):
         self.beat_offsets[slot] = value or 0.0
@@ -444,6 +481,7 @@ class StudioState:
             params = self.build_params()
             self.loop_buffer.check_and_rerender(params, self.loop_version)
             print(f"[Loop] Re-rendering with beat offset change (v{self.loop_version})")
+            self._trigger_loop_update_if_active()
 
     def update_key_override(self, slot, value):
         """Update key override from dropdown selection."""
@@ -457,6 +495,7 @@ class StudioState:
                 params = self.build_params()
                 self.loop_buffer.check_and_rerender(params, self.loop_version)
                 print(f"[Loop] Re-rendering with key override change (v{self.loop_version})")
+                self._trigger_loop_update_if_active()
             self.add_status(f"🎹 Song {slot+1} key override: {value}")
         else:
             self.key_overrides[slot] = -1
@@ -543,12 +582,21 @@ class StudioState:
 
             # Wait for loop to be ready
             if self.loop_buffer.wait_for_ready(timeout=60):
-                self.last_render_path = "streaming"  # Mark as streaming
+                # Save loop to file for Gradio Audio component (shows waveform)
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                loop_filename = f"loop_{timestamp}.mp3"
+                loop_path = str(BASE_DIR / loop_filename)
+
+                # Get loop data and save to file
+                loop_data = bytes(self.loop_buffer.loop_buffer)
+                with open(loop_path, "wb") as f:
+                    f.write(loop_data)
+
+                self.last_render_path = loop_path
+                self.last_loop_file = loop_path  # Track for slider updates
                 self.add_status(f"✨ Loop ready! Playing ({loop_length_str})")
-                print(f"[Loop] ✓ Loop ready for streaming")
-                # Return streaming server URL for real-time updates
-                stream_url = f"http://127.0.0.1:5001/audio/stream"
-                return stream_url, f"✓ Loop playing ({loop_length_str})"
+                print(f"[Loop] ✓ Saved to {loop_path} ({len(loop_data)} bytes)")
+                return loop_path, f"✓ Loop playing ({loop_length_str})"
             else:
                 return None, "Loop render timeout"
 
@@ -1277,9 +1325,9 @@ def create_app():
             loop_status = gr.Textbox(label="Loop Status", value="Ready", interactive=False, scale=2)
 
         # Audio player for loop - use Gradio's Audio component
-        # NOTE: Can accept both file paths and streaming URLs for real-time updates
         loop_audio_player = gr.Audio(
             label="Loop Output",
+            type="filepath",
             elem_id="loop_audio_player"
         )
 
@@ -1306,42 +1354,32 @@ def create_app():
                     elem_id="render_audio_player"
                 )
 
-        # JavaScript for loop player control and auto-reload on slider changes
+        # JavaScript for loop player control
         gr.HTML('''
         <script>
             function setupLoopPlayback() {
                 // Find the loop audio player element
-                const loopAudio = document.querySelector('#loop_audio_player audio');
-                if (loopAudio) {
-                    // Ensure loop attribute is always set
-                    loopAudio.loop = true;
-                    loopAudio.setAttribute('loop', 'loop');
+                const audioElements = document.querySelectorAll('#loop_audio_player audio');
+                audioElements.forEach(loopAudio => {
+                    if (!loopAudio.hasAttribute('data-loop-setup')) {
+                        // Ensure loop attribute is always set
+                        loopAudio.loop = true;
+                        loopAudio.setAttribute('loop', 'loop');
 
-                    // Set up event listener for when audio ends (for seamless looping)
-                    loopAudio.addEventListener('ended', () => {
-                        loopAudio.currentTime = 0;
-                        loopAudio.play().catch(e => console.log('[Loop] Autoplay on loop prevented:', e));
-                    }, false);
+                        // Fallback: listen for ended event for older browsers
+                        loopAudio.addEventListener('ended', () => {
+                            loopAudio.currentTime = 0;
+                            loopAudio.play().catch(e => console.log('[Loop] Autoplay prevented:', e));
+                        }, false);
 
-                    console.log('[Loop] Setup complete: looping enabled');
-                }
+                        loopAudio.setAttribute('data-loop-setup', 'true');
+                        console.log('[Loop] Setup complete: looping enabled');
+                    }
+                });
             }
 
-            // Run on page load and when elements change
-            window.addEventListener('load', setupLoopPlayback);
-            document.addEventListener('DOMContentLoaded', setupLoopPlayback);
-
-            // Also check periodically for new audio elements
-            let loopSetupAttempts = 0;
-            const loopSetupInterval = setInterval(() => {
-                const loopAudio = document.querySelector('#loop_audio_player audio');
-                if (loopAudio && !loopAudio.hasAttribute('data-loop-setup')) {
-                    setupLoopPlayback();
-                    loopAudio.setAttribute('data-loop-setup', 'true');
-                }
-                loopSetupAttempts++;
-                if (loopSetupAttempts > 10) clearInterval(loopSetupInterval);
-            }, 500);
+            // Run periodically to catch newly created audio elements
+            setInterval(setupLoopPlayback, 500);
         </script>
         ''')
 
@@ -1368,17 +1406,13 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            # Return streaming URL or file path to Gradio Audio component
-            if audio:
-                if audio.startswith("http"):
-                    print(f"[Loop] Returning streaming URL: {audio}")
-                    return (status, gr.update(value=audio))
-                elif Path(audio).exists():
-                    file_size = Path(audio).stat().st_size
-                    print(f"[Loop] Returning audio file: {audio} ({file_size} bytes)")
-                    return (status, gr.update(value=audio))
+            # Return file path to Gradio Audio component
+            if audio and Path(audio).exists():
+                file_size = Path(audio).stat().st_size
+                print(f"[Loop] Returning audio file: {audio} ({file_size} bytes)")
+                return (status, gr.update(value=audio))
 
-            print(f"[Loop] No audio to return")
+            print(f"[Loop] No audio file to return")
             return (status, gr.update(value=None))
 
         loop_btn.click(
