@@ -129,6 +129,11 @@ class AudioStreamManager:
         except Exception as e:
             logger.error(f"Error updating settings: {e}")
 
+    def set_loop_buffer(self, loop_buffer):
+        """Switch to streaming from loop buffer (Phase 2)."""
+        if self.server:
+            self.server.set_loop_buffer(loop_buffer)
+
     def get_status(self) -> dict:
         """Get streaming status info."""
         return {

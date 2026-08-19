@@ -23,6 +23,7 @@ from threading import Lock
 from datetime import datetime
 from mashup_engine import MashupEngine
 from audio_stream_manager import AudioStreamManager
+from loop_render_buffer import LoopRenderBuffer
 import logging
 from flask import Flask, send_file
 import mimetypes
@@ -99,6 +100,10 @@ class StudioState:
         self.loop_length = 20.0  # seconds (8 bars default)
         self.loop_active = False
         self.loop_version = 0  # Version counter for loop changes
+        self.loop_buffer = LoopRenderBuffer(
+            render_func=self._render_stream_chunk,
+            loop_duration=20
+        )
 
         # Initialize audio streaming manager for Phase 2
         self.stream_manager = AudioStreamManager(
@@ -455,36 +460,47 @@ class StudioState:
             length_map = {"4 bars (10s)": 10.0, "8 bars (20s)": 20.0, "16 bars (40s)": 40.0}
             loop_length = length_map.get(loop_length_str, 20.0)
 
+            # Stop previous loop if active
+            if self.loop_active and self.loop_buffer.is_rendering:
+                print("[Loop] Stopping previous render...")
+                self.loop_buffer.stop()
+
             self.loop_start = loop_start
-            self.loop_length = loop_length
+            self.loop_length = int(loop_length)
             self.loop_active = True
             self.loop_version += 1
 
-            # Render the loop
+            # Get current settings
             params = self.build_params()
             if not params["songs"][0] and not params["songs"][1]:
                 return None, "Load Song 1 before starting loop."
 
-            print(f"[Loop] Starting loop: {loop_start}s → {loop_start + loop_length}s")
-            self.add_status(f"🎵 Loop: {loop_start:.1f}s - {loop_start + loop_length:.1f}s ({loop_length_str})")
+            print(f"[Loop] Starting loop: {self.loop_length}s")
+            self.add_status(f"🎵 Rendering {loop_length_str} loop...")
 
-            # Generate the loop file
-            temp_file = self.engine.render(params, preview=True, preview_duration=int(loop_length))
+            # Start streaming server if needed
+            if not self.stream_manager.is_running:
+                self.stream_manager.start()
+                print("[Loop] ✓ Streaming server started")
 
-            if temp_file and Path(temp_file).exists():
-                import shutil
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                loop_filename = f"loop_{timestamp}.mp3"
-                loop_path = str(BASE_DIR / loop_filename)
-                shutil.move(temp_file, loop_path)
-                self.last_render_path = loop_path
-                self.add_status("✨ Loop ready! Playing...")
-                return loop_path, f"✓ Loop playing ({loop_length_str})"
+            # Update loop buffer duration and start pre-render
+            self.loop_buffer.loop_duration = self.loop_length
+            self.loop_buffer.start_render(params)
+
+            # Tell server to stream from loop buffer
+            self.stream_manager.set_loop_buffer(self.loop_buffer)
+
+            # Wait for loop to be ready
+            if self.loop_buffer.wait_for_ready(timeout=60):
+                stream_url = self.stream_manager.get_stream_url()
+                self.add_status(f"✨ Loop ready! Playing ({loop_length_str})")
+                print(f"[Loop] ✓ Ready and streaming from {stream_url}")
+                return stream_url, f"✓ Loop playing ({loop_length_str})"
             else:
-                return None, "Loop render failed"
+                return None, "Loop render timeout"
 
         except Exception as e:
+            print(f"[Loop] Error: {e}")
             return None, f"Loop error: {str(e)[:50]}"
 
     def preview(self):
@@ -1237,8 +1253,14 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            audio_html = update_output_audio()
-            return (status, audio_html)
+            # For streaming URLs, return directly; for files, check if path exists
+            if audio and (audio.startswith("http://") or audio.startswith("https://")):
+                audio_update = gr.update(value=audio)
+            elif audio and Path(audio).exists():
+                audio_update = gr.update(value=audio)
+            else:
+                audio_update = gr.update(value=None)
+            return (status, audio_update)
 
         loop_btn.click(
             loop_with_update,
