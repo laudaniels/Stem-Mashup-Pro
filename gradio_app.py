@@ -543,20 +543,12 @@ class StudioState:
 
             # Wait for loop to be ready
             if self.loop_buffer.wait_for_ready(timeout=60):
-                # Save loop to file for Gradio Audio component (shows waveform)
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-                loop_filename = f"loop_{timestamp}.mp3"
-                loop_path = str(BASE_DIR / loop_filename)
-
-                # Get loop data and save to file
-                loop_data = bytes(self.loop_buffer.loop_buffer)
-                with open(loop_path, "wb") as f:
-                    f.write(loop_data)
-
-                self.last_render_path = loop_path
+                self.last_render_path = "streaming"  # Mark as streaming
                 self.add_status(f"✨ Loop ready! Playing ({loop_length_str})")
-                print(f"[Loop] ✓ Saved to {loop_path} ({len(loop_data)} bytes)")
-                return loop_path, f"✓ Loop playing ({loop_length_str})"
+                print(f"[Loop] ✓ Loop ready for streaming")
+                # Return streaming server URL for real-time updates
+                stream_url = f"http://127.0.0.1:5001/audio/stream"
+                return stream_url, f"✓ Loop playing ({loop_length_str})"
             else:
                 return None, "Loop render timeout"
 
@@ -1285,9 +1277,9 @@ def create_app():
             loop_status = gr.Textbox(label="Loop Status", value="Ready", interactive=False, scale=2)
 
         # Audio player for loop - use Gradio's Audio component
+        # NOTE: Can accept both file paths and streaming URLs for real-time updates
         loop_audio_player = gr.Audio(
             label="Loop Output",
-            type="filepath",
             elem_id="loop_audio_player"
         )
 
@@ -1317,33 +1309,39 @@ def create_app():
         # JavaScript for loop player control and auto-reload on slider changes
         gr.HTML('''
         <script>
-            // Auto-reload loop player when a new loop file is rendered
-            let lastLoopContent = '';
-            function checkLoopUpdates() {
-                const loopContainer = document.querySelector('#loop_player_container');
-                if (loopContainer && loopContainer.innerHTML !== lastLoopContent) {
-                    lastLoopContent = loopContainer.innerHTML;
-                    const audioPlayer = loopContainer.querySelector('audio');
-                    if (audioPlayer) {
-                        // Ensure loop attribute is set
-                        audioPlayer.loop = true;
-                        audioPlayer.setAttribute('loop', 'loop');
-                        // Pause and reload to reset position
-                        audioPlayer.pause();
-                        audioPlayer.currentTime = 0;
-                        // Autoplay the new loop
-                        audioPlayer.play().catch(e => console.log('[Loop] Autoplay prevented:', e));
-                        console.log('[Loop] Reloaded with new settings');
-                    }
+            function setupLoopPlayback() {
+                // Find the loop audio player element
+                const loopAudio = document.querySelector('#loop_audio_player audio');
+                if (loopAudio) {
+                    // Ensure loop attribute is always set
+                    loopAudio.loop = true;
+                    loopAudio.setAttribute('loop', 'loop');
+
+                    // Set up event listener for when audio ends (for seamless looping)
+                    loopAudio.addEventListener('ended', () => {
+                        loopAudio.currentTime = 0;
+                        loopAudio.play().catch(e => console.log('[Loop] Autoplay on loop prevented:', e));
+                    }, false);
+
+                    console.log('[Loop] Setup complete: looping enabled');
                 }
             }
-            // Check for updates every 500ms
-            setInterval(checkLoopUpdates, 500);
 
-            // Also trigger on slider changes
-            document.addEventListener('change', () => {
-                setTimeout(checkLoopUpdates, 100);
-            });
+            // Run on page load and when elements change
+            window.addEventListener('load', setupLoopPlayback);
+            document.addEventListener('DOMContentLoaded', setupLoopPlayback);
+
+            // Also check periodically for new audio elements
+            let loopSetupAttempts = 0;
+            const loopSetupInterval = setInterval(() => {
+                const loopAudio = document.querySelector('#loop_audio_player audio');
+                if (loopAudio && !loopAudio.hasAttribute('data-loop-setup')) {
+                    setupLoopPlayback();
+                    loopAudio.setAttribute('data-loop-setup', 'true');
+                }
+                loopSetupAttempts++;
+                if (loopSetupAttempts > 10) clearInterval(loopSetupInterval);
+            }, 500);
         </script>
         ''')
 
@@ -1370,17 +1368,18 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            # Return file path to Gradio Audio component
-            if audio and Path(audio).exists():
-                file_size = Path(audio).stat().st_size
-                duration_sec = file_size / 22050 * 8 / 1000  # rough estimate
-                print(f"[Loop] Returning audio file: {audio}")
-                print(f"[Loop] File size: {file_size} bytes (~{duration_sec:.1f} sec estimated)")
-                print(f"[Loop] Expected duration: {state.loop_length} sec")
-                return (status, gr.update(value=audio))
-            else:
-                print(f"[Loop] No audio file to return")
-                return (status, gr.update(value=None))
+            # Return streaming URL or file path to Gradio Audio component
+            if audio:
+                if audio.startswith("http"):
+                    print(f"[Loop] Returning streaming URL: {audio}")
+                    return (status, gr.update(value=audio))
+                elif Path(audio).exists():
+                    file_size = Path(audio).stat().st_size
+                    print(f"[Loop] Returning audio file: {audio} ({file_size} bytes)")
+                    return (status, gr.update(value=audio))
+
+            print(f"[Loop] No audio to return")
+            return (status, gr.update(value=None))
 
         loop_btn.click(
             loop_with_update,
