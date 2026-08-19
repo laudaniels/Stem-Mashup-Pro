@@ -988,11 +988,13 @@ def create_app():
         bpm_overrides_ui = []
         key_overrides_ui = []
         audio_players = []
+        song_name_displays = []
 
         with gr.Row():
             for i in range(2):
                 with gr.Column():
-                    gr.Markdown(f"**Song {i+1}**")
+                    song_name = gr.Textbox(label=f"Song {i+1}", value=f"Song {i+1}", interactive=False, scale=1)
+                    song_name_displays.append(song_name)
                     audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True)
                     audio_players.append(audio_player)
                     file_inputs.append(audio_player)
@@ -1054,13 +1056,15 @@ def create_app():
                     state.pitch_manually_changed[slot] = False
                     state.add_status(f"🗑️ Song {slot+1} removed")
                     status_text = state.get_status_text()
-                    return gr.update(), "—", "—", status_text
+                    return gr.update(), f"Song {slot+1}", "—", "—", status_text
                 else:
                     msg, audio_path, _ = state.load_song(f, slot)
                     bpm_text = state.get_bpm_display(slot)
                     key_text = state.get_key_display(slot)
                     status_text = state.get_status_text()
-                    return gr.update(), bpm_text, key_text, status_text
+                    # Get filename from the loaded song path
+                    filename = Path(state.song_paths[slot]).stem if state.song_paths[slot] else f"Song {slot+1}"
+                    return gr.update(), filename, bpm_text, key_text, status_text
             return load_and_update
 
         for i, file_input in enumerate(file_inputs):
@@ -1068,7 +1072,7 @@ def create_app():
                 file_input.change(
                     make_load_callback(i),
                     inputs=[file_input],
-                    outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
+                    outputs=[audio_players[i], song_name_displays[i], bpm_displays[i], key_displays[i], separate_status]
                 )
             else:
                 def make_song2_callback(slot):
@@ -1080,19 +1084,21 @@ def create_app():
                             state.song_keys[slot] = None
                             state.pitch_manually_changed[slot] = False
                             state.add_status(f"🗑️ Song {slot+1} removed")
-                            return gr.update(), "—", "—", state.get_status_text()
+                            return gr.update(), f"Song {slot+1}", "—", "—", state.get_status_text()
 
                         msg, audio_path, _ = state.load_song(f, slot)
                         bpm_text = state.get_bpm_display(slot)
                         key_text = state.get_key_display(slot)
                         status_text = state.get_status_text()
-                        return gr.update(), bpm_text, key_text, status_text
+                        # Get filename from the loaded song path
+                        filename = Path(state.song_paths[slot]).stem if state.song_paths[slot] else f"Song {slot+1}"
+                        return gr.update(), filename, bpm_text, key_text, status_text
                     return load_song2
 
                 file_input.change(
                     make_song2_callback(i),
                     inputs=[file_input],
-                    outputs=[audio_players[i], bpm_displays[i], key_displays[i], separate_status]
+                    outputs=[audio_players[i], song_name_displays[i], bpm_displays[i], key_displays[i], separate_status]
                 )
 
         # Song 2 is kept enabled (always loadable)
