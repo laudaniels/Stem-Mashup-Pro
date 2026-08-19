@@ -129,12 +129,17 @@ class StudioState:
             # Render using current app state (sliders, BPM, etc.)
             params = self.build_params()
 
+            print(f"[Render] Rendering {duration}s chunk")
             # Render the preview chunk
             output = self.engine.render(params, preview=True, preview_duration=duration)
 
+            print(f"[Render] Engine returned: {output}")
             if output and Path(output).exists():
+                file_size = Path(output).stat().st_size
+                print(f"[Render] File size: {file_size} bytes")
                 with open(output, "rb") as f:
                     audio_data = f.read()
+                    print(f"[Render] Read {len(audio_data)} bytes from file")
                     logger.debug(f"Rendered chunk: {len(audio_data)} bytes")
                     return audio_data
 
@@ -1368,7 +1373,11 @@ def create_app():
             audio, status = state.start_loop(start, length)
             # Return file path to Gradio Audio component
             if audio and Path(audio).exists():
+                file_size = Path(audio).stat().st_size
+                duration_sec = file_size / 22050 * 8 / 1000  # rough estimate
                 print(f"[Loop] Returning audio file: {audio}")
+                print(f"[Loop] File size: {file_size} bytes (~{duration_sec:.1f} sec estimated)")
+                print(f"[Loop] Expected duration: {state.loop_length} sec")
                 return (status, gr.update(value=audio))
             else:
                 print(f"[Loop] No audio file to return")
