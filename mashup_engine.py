@@ -341,7 +341,13 @@ class MashupEngine:
         filter_complex += ";" + "".join(mixed_tracks)
         filter_complex += f"amix=inputs={len(mixed_tracks)}:duration=longest:normalize=0,alimiter=limit=0.95[final]"
 
-        output = str(BASE_DIR / ("preview_temp.mp3" if preview else "final_remix.mp3"))
+        # Use unique preview files to avoid concurrent render conflicts
+        if preview:
+            import time
+            timestamp = str(int(time.time() * 1000))[-8:]  # Last 8 digits of milliseconds
+            output = str(BASE_DIR / f"preview_temp_{timestamp}.mp3")
+        else:
+            output = str(BASE_DIR / "final_remix.mp3")
         command = [self.ffmpeg, "-y", *inputs, "-filter_complex", filter_complex, "-map", "[final]"]
         command += ["-c:a", "libmp3lame", "-q:a", "2"]
         if preview:

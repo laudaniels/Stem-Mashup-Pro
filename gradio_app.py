@@ -544,7 +544,6 @@ class StudioState:
             # Wait for loop to be ready
             if self.loop_buffer.wait_for_ready(timeout=60):
                 # Save loop to file for Gradio Audio component (shows waveform)
-                import shutil
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
                 loop_filename = f"loop_{timestamp}.mp3"
                 loop_path = str(BASE_DIR / loop_filename)
