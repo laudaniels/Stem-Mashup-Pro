@@ -43,19 +43,17 @@ class AudioStreamServer:
 
             # Get complete loop data
             loop_data = bytes(self.loop_buffer.loop_buffer)
-            logger.info(f"[Stream] Sending complete loop: {len(loop_data)} bytes")
+            size = len(loop_data)
+            logger.info(f"[Stream] Sending complete loop: {size} bytes")
 
-            # Send as complete file with proper headers
-            return Response(
-                loop_data,
-                mimetype="audio/mpeg",
-                headers={
-                    "Content-Length": str(len(loop_data)),
-                    "Accept-Ranges": "bytes",
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                }
-            )
+            # Create response object with explicit headers
+            response = Response(loop_data, mimetype="audio/mpeg")
+            response.headers["Content-Length"] = size
+            response.headers["Accept-Ranges"] = "bytes"
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            # Remove Transfer-Encoding if Flask added it
+            response.direct_passthrough = False
+            return response
 
         # Fallback to circular buffer mode (Phase 1)
         def generate():
