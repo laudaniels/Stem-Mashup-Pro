@@ -1272,7 +1272,8 @@ def create_app():
             render_btn = gr.Button("🎛️ RENDER FULL REMIX AND STEMS", size="lg", scale=1, interactive=False)
 
         with gr.Row():
-            output_audio_html = gr.Audio(label="Output", type="filepath", scale=2, elem_id="output_audio_player")
+            output_audio_html = gr.Audio(label="Output", type="filepath", scale=2, elem_id="output_audio_player", visible=True)
+            loop_audio_html = gr.HTML(label="Loop Player", value="", visible=False)
             render_status = gr.Textbox(label="Status", value="Ready", interactive=False, scale=1)
 
         with gr.Row():
@@ -1298,19 +1299,24 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            # For streaming URLs, return directly; for files, check if path exists
+            # For streaming URLs, use HTML to bypass Gradio's SSRF validation
             if audio and (audio.startswith("http://") or audio.startswith("https://")):
-                audio_update = gr.update(value=audio)
+                html = f'''
+                <audio controls style="width: 100%; height: 50px;">
+                    <source src="{audio}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
+                '''
+                return (status, gr.update(value=None, visible=False), gr.update(value=html, visible=True))
             elif audio and Path(audio).exists():
-                audio_update = gr.update(value=audio)
+                return (status, gr.update(value=audio, visible=True), gr.update(value="", visible=False))
             else:
-                audio_update = gr.update(value=None)
-            return (status, audio_update)
+                return (status, gr.update(value=None, visible=True), gr.update(value="", visible=False))
 
         loop_btn.click(
             loop_with_update,
             inputs=[loop_start, loop_length],
-            outputs=[loop_status, output_audio_html]
+            outputs=[loop_status, output_audio_html, loop_audio_html]
         )
 
         preview_btn.click(
