@@ -569,8 +569,9 @@ class StudioState:
             if not params["songs"][0] and not params["songs"][1]:
                 return None, "Load Song 1 before starting loop."
 
-            print(f"[Loop] Starting loop: {self.loop_length}s")
-            print(f"[Loop] Settings: vocals={params['sliders'].get('s0_vocals_vol')}, crossfader={params['crossfader']}, target_bpm={params['target_bpm']}")
+            print(f"[Loop] Starting loop: {self.loop_length}s from {self.loop_start}s")
+            print(f"[Loop] Song 0 vocals: {params['sliders'].get('s0_vocals_vol')}, Song 1 vocals: {params['sliders'].get('s1_vocals_vol')}")
+            print(f"[Loop] Crossfader: {params['crossfader']}, Target BPM: {params['target_bpm']}, Beatmatch: {params['beatmatch']}")
             self.add_status(f"🎵 Rendering {loop_length_str} loop...")
 
             # Start streaming server if needed
@@ -1327,12 +1328,22 @@ def create_app():
             loop_btn = gr.Button("▶ START LOOP", size="lg", scale=1, interactive=False, variant="primary")
             loop_status = gr.Textbox(label="Loop Status", value="Ready", interactive=False, scale=2)
 
-        # Audio player for loop - use Gradio's Audio component
-        loop_audio_player = gr.Audio(
-            label="Loop Output",
-            type="filepath",
-            elem_id="loop_audio_player"
-        )
+        # Custom HTML audio player for loop (Gradio Audio component doesn't properly support loop attribute)
+        gr.HTML('''
+        <div style="margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+            <label style="display: block; margin-bottom: 10px; font-weight: bold;">Loop Output</label>
+            <audio id="loop_player"
+                   controls
+                   loop
+                   style="width: 100%; max-width: 600px; display: block;"
+                   preload="auto">
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+        ''')
+
+        # Hidden component to hold the file path (for Gradio callbacks)
+        loop_audio_player = gr.Textbox(visible=False, elem_id="loop_audio_path")
 
         # ===== Preview, Loop & Render =====
         with gr.Row():
@@ -1357,94 +1368,98 @@ def create_app():
                     elem_id="render_audio_player"
                 )
 
-        # JavaScript for loop player control with file change detection
+        # JavaScript for custom loop player control
         gr.HTML('''
         <script>
             let lastLoopFileSize = 0;
+            let loopPlayer = null;
 
-            function setupLoopPlayback() {
-                // Try finding audio in #loop_audio_player
-                let audioElement = document.querySelector('#loop_audio_player audio');
-
-                // If not found, search in parent components
-                if (!audioElement) {
-                    const container = document.querySelector('#loop_audio_player');
-                    if (container) {
-                        audioElement = container.querySelector('audio');
-                    }
+            function setupLoopPlayer() {
+                loopPlayer = document.getElementById('loop_player');
+                if (!loopPlayer) {
+                    console.log('[Loop] Audio player not found');
+                    return false;
                 }
 
-                if (audioElement && !audioElement.hasAttribute('data-loop-setup')) {
-                    try {
-                        // Enable looping
-                        audioElement.loop = true;
-                        audioElement.setAttribute('loop', 'loop');
+                // Ensure loop attribute is set
+                loopPlayer.loop = true;
+                loopPlayer.setAttribute('loop', 'loop');
 
-                        // Backup: listen for ended and manually restart
-                        audioElement.addEventListener('ended', function() {
-                            console.log('[Loop] Audio ended, restarting...');
-                            this.currentTime = 0;
-                            this.play().catch(e => console.log('[Loop] Autoplay failed:', e));
-                        }, false);
+                // Backup: manually restart on ended for maximum compatibility
+                loopPlayer.addEventListener('ended', function() {
+                    console.log('[Loop] Audio ended, restarting...');
+                    this.currentTime = 0;
+                    this.play().catch(e => console.log('[Loop] Autoplay failed:', e));
+                }, false);
 
-                        audioElement.setAttribute('data-loop-setup', 'true');
-                        console.log('[Loop] Setup complete: audio element found and looping enabled');
-                    } catch (e) {
-                        console.log('[Loop] Setup error:', e);
-                    }
-                }
+                console.log('[Loop] Player setup complete');
+                return true;
             }
 
-            // Detect file changes and reload player
-            function checkAndReloadLoop() {
-                let audioElement = document.querySelector('#loop_audio_player audio');
-                if (!audioElement) {
-                    const container = document.querySelector('#loop_audio_player');
-                    if (container) {
-                        audioElement = container.querySelector('audio');
-                    }
+            function loadLoopFile(filepath) {
+                if (!loopPlayer && !setupLoopPlayer()) return;
+
+                const wasPlaying = !loopPlayer.paused;
+                const currentTime = loopPlayer.currentTime;
+
+                // Add cache-buster
+                const url = filepath + '?t=' + Date.now();
+                loopPlayer.src = url;
+                loopPlayer.load();
+
+                if (wasPlaying) {
+                    setTimeout(() => {
+                        loopPlayer.currentTime = Math.min(currentTime, loopPlayer.duration || 0);
+                        loopPlayer.play().catch(e => console.log('[Loop] Play failed:', e));
+                    }, 50);
                 }
 
-                if (!audioElement || !audioElement.src) return;
-                if (!audioElement.src.includes('loop_current.mp3')) return;
+                console.log('[Loop] Loaded: ' + filepath);
+            }
 
-                // Check if file has changed
-                fetch(audioElement.src + '?t=' + Date.now(), {method: 'HEAD'})
+            function checkAndReloadLoopFile() {
+                if (!loopPlayer || !loopPlayer.src) return;
+
+                const srcBase = loopPlayer.src.split('?')[0];
+                if (!srcBase.includes('loop_current.mp3')) return;
+
+                fetch(srcBase, {method: 'HEAD'})
                     .then(resp => {
-                        const fileSize = resp.headers.get('content-length');
+                        const fileSize = parseInt(resp.headers.get('content-length') || 0);
                         if (!fileSize) return;
 
-                        if (lastLoopFileSize > 0 && parseInt(fileSize) !== parseInt(lastLoopFileSize)) {
-                            console.log('[Loop] File changed: ' + lastLoopFileSize + ' → ' + fileSize);
+                        if (lastLoopFileSize > 0 && fileSize !== lastLoopFileSize) {
+                            console.log('[Loop] File changed: ' + lastLoopFileSize + ' → ' + fileSize + ' bytes');
                             lastLoopFileSize = fileSize;
-
-                            const wasPlaying = !audioElement.paused;
-                            audioElement.pause();
-                            const baseUrl = audioElement.src.split('?')[0];
-                            audioElement.src = baseUrl + '?t=' + Date.now();
-                            audioElement.load();
-
-                            if (wasPlaying) {
-                                setTimeout(() => {
-                                    audioElement.play().catch(e => console.log('[Loop] Play failed:', e));
-                                }, 100);
-                            }
-                            console.log('[Loop] Reloaded audio from disk');
+                            loadLoopFile(srcBase);
                         } else if (!lastLoopFileSize && fileSize) {
                             lastLoopFileSize = fileSize;
-                            console.log('[Loop] Initial file size tracked: ' + fileSize);
+                            console.log('[Loop] Initial size: ' + fileSize + ' bytes');
                         }
                     })
-                    .catch(e => console.log('[Loop] File check failed:', e));
+                    .catch(e => console.log('[Loop] Size check failed:', e));
             }
 
-            // Setup loop on page load and periodically
-            window.addEventListener('load', setupLoopPlayback);
-            document.addEventListener('DOMContentLoaded', setupLoopPlayback);
-            setInterval(setupLoopPlayback, 300);
-            setInterval(checkAndReloadLoop, 1000);
+            // Initialize and start monitoring
+            document.addEventListener('DOMContentLoaded', setupLoopPlayer);
+            window.addEventListener('load', setupLoopPlayer);
 
-            console.log('[Loop] JavaScript initialized');
+            // Monitor for file path changes (from Gradio callback)
+            let lastLoopPath = '';
+            function checkPathUpdate() {
+                const pathInput = document.querySelector('textarea[id*="loop_audio_path"]');
+                if (pathInput && pathInput.value !== lastLoopPath && pathInput.value) {
+                    lastLoopPath = pathInput.value;
+                    console.log('[Loop] New file: ' + pathInput.value);
+                    loadLoopFile(pathInput.value);
+                    lastLoopFileSize = 0;  // Reset size tracking
+                }
+                // Also periodically check for file updates
+                checkAndReloadLoopFile();
+            }
+
+            setInterval(checkPathUpdate, 500);
+            console.log('[Loop] JavaScript initialized - custom player');
         </script>
         ''')
 
@@ -1471,14 +1486,14 @@ def create_app():
 
         def loop_with_update(start, length):
             audio, status = state.start_loop(start, length)
-            # Return file path to Gradio Audio component
+            # Return file path to hidden textbox (JavaScript will load it into custom player)
             if audio and Path(audio).exists():
                 file_size = Path(audio).stat().st_size
                 print(f"[Loop] Returning audio file: {audio} ({file_size} bytes)")
                 return (status, gr.update(value=audio))
 
             print(f"[Loop] No audio file to return")
-            return (status, gr.update(value=None))
+            return (status, gr.update(value=""))
 
         loop_btn.click(
             loop_with_update,
