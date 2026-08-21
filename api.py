@@ -25,12 +25,22 @@ def index():
     return send_from_directory('frontend/dist', 'index.html')
 
 
-@app.route('/<path:path>')
-def serve_static(path):
-    """Serve static assets"""
-    if path != "" and Path(f'frontend/dist/{path}').is_file():
-        return send_from_directory('frontend/dist', path)
+@app.route('/<path:filepath>')
+def serve_files(filepath):
+    """Serve loop files and other assets from project root"""
+    # Check if file exists in project root (for loop_current.mp3, etc.)
+    file_path = BASE_DIR / filepath
+    if file_path.is_file() and file_path.is_relative_to(BASE_DIR):
+        return send_from_directory(BASE_DIR, filepath)
+
+    # Otherwise, try serving from frontend dist (for other assets)
+    if Path(f'frontend/dist/{filepath}').is_file():
+        return send_from_directory('frontend/dist', filepath)
+
+    # Fall back to index.html for React routing
     return send_from_directory('frontend/dist', 'index.html')
+
+
 
 
 # ===== API Routes =====
@@ -109,8 +119,12 @@ def start_loop():
             logging.error(f"No file path returned: {status}")
             return jsonify({'error': status}), 500
 
+        # Convert absolute path to relative URL for browser fetching
+        relative_url = file_path.replace(str(BASE_DIR), '').lstrip('/')
+        logging.info(f"Converted {file_path} to URL: /{relative_url}")
+
         return jsonify({
-            'file': file_path,
+            'file': f'/{relative_url}',
             'status': status,
             'message': 'Loop ready!'
         })
