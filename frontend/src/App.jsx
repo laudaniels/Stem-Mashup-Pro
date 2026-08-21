@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import SongLoader from './components/SongLoader'
 import Mixer from './components/Mixer'
 import LoopPlayer from './components/LoopPlayer'
@@ -9,6 +9,7 @@ export default function App() {
   const [stems, setStems] = useState([null, null])
   const [status, setStatus] = useState('')
   const [loopFile, setLoopFile] = useState(null)
+  const pollInterval = useRef(null)
   const [sliders, setSliders] = useState({
     s0_vocals_vol: 1, s0_beats_vol: 1, s0_bass_vol: 1, s0_other_vol: 1,
     s0_pitch_shift: 0, s0_reverb: 0, s0_speed: 1, s0_eq_low: 0, s0_eq_mid: 0, s0_eq_high: 0,
@@ -22,6 +23,36 @@ export default function App() {
     loop_start: 0,
     loop_length: '8 bars (20s)',
   })
+
+  // Poll for status updates
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const response = await fetch('/api/status')
+        if (!response.ok) return
+
+        const data = await response.json()
+
+        // Update stems if ready
+        if (data.stems_ready && data.stems) {
+          setStems(data.stems)
+        }
+
+        // Show latest status message
+        if (data.status_messages && data.status_messages.length > 0) {
+          setStatus(data.status_messages[data.status_messages.length - 1])
+        }
+      } catch (e) {
+        console.log('Status check failed:', e)
+      }
+    }
+
+    // Start polling
+    checkStatus() // Check immediately
+    pollInterval.current = setInterval(checkStatus, 1000) // Check every second
+
+    return () => clearInterval(pollInterval.current)
+  }, [])
 
   return (
     <div className="app">

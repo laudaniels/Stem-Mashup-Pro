@@ -29,12 +29,8 @@ export default function SongLoader({ onSongsLoaded, onStemsReady, onStatus }) {
         return songs
       })
 
-      // Check if stems are ready
-      const statusResponse = await fetch('/api/status')
-      const status = await statusResponse.json()
-      if (status.stems_ready) {
-        onStemsReady([status.stems[0], status.stems[1]])
-      }
+      // Note: App.jsx polling will detect when stems are ready
+      // No need to check here
 
     } catch (error) {
       onStatus(`✗ Error loading song: ${error.message}`)
