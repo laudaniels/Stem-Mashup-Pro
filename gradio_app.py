@@ -379,12 +379,16 @@ class StudioState:
             try:
                 loop_data = bytes(self.loop_buffer.loop_buffer)
                 if loop_data and self.last_loop_file:
+                    old_size = Path(self.last_loop_file).stat().st_size if Path(self.last_loop_file).exists() else 0
                     with open(self.last_loop_file, "wb") as f:
                         f.write(loop_data)
-                    print(f"[Loop] ✓ Updated loop file: {len(loop_data)} bytes")
+                    new_size = len(loop_data)
+                    print(f"[Loop] ✓ Updated file: {old_size} → {new_size} bytes")
                     return self.last_loop_file
             except Exception as e:
                 print(f"[Loop] Error saving buffer: {e}")
+        else:
+            print(f"[Loop] Save skipped - active={self.loop_active}, ready={self.loop_buffer.is_ready() if self.loop_active else False}")
         return None
 
     def _trigger_loop_update_if_active(self):
@@ -566,6 +570,7 @@ class StudioState:
                 return None, "Load Song 1 before starting loop."
 
             print(f"[Loop] Starting loop: {self.loop_length}s")
+            print(f"[Loop] Settings: vocals={params['sliders'].get('s0_vocals_vol')}, crossfader={params['crossfader']}, target_bpm={params['target_bpm']}")
             self.add_status(f"🎵 Rendering {loop_length_str} loop...")
 
             # Start streaming server if needed
@@ -1358,60 +1363,88 @@ def create_app():
             let lastLoopFileSize = 0;
 
             function setupLoopPlayback() {
-                const audioElements = document.querySelectorAll('#loop_audio_player audio');
-                audioElements.forEach(loopAudio => {
-                    if (!loopAudio.hasAttribute('data-loop-setup')) {
-                        // Set loop attribute for continuous playback
-                        loopAudio.loop = true;
-                        loopAudio.setAttribute('loop', 'loop');
+                // Try finding audio in #loop_audio_player
+                let audioElement = document.querySelector('#loop_audio_player audio');
 
-                        // Primary loop handler: restart on ended
-                        loopAudio.addEventListener('ended', () => {
-                            loopAudio.currentTime = 0;
-                            loopAudio.play().catch(e => console.log('[Loop] Autoplay prevented:', e));
+                // If not found, search in parent components
+                if (!audioElement) {
+                    const container = document.querySelector('#loop_audio_player');
+                    if (container) {
+                        audioElement = container.querySelector('audio');
+                    }
+                }
+
+                if (audioElement && !audioElement.hasAttribute('data-loop-setup')) {
+                    try {
+                        // Enable looping
+                        audioElement.loop = true;
+                        audioElement.setAttribute('loop', 'loop');
+
+                        // Backup: listen for ended and manually restart
+                        audioElement.addEventListener('ended', function() {
+                            console.log('[Loop] Audio ended, restarting...');
+                            this.currentTime = 0;
+                            this.play().catch(e => console.log('[Loop] Autoplay failed:', e));
                         }, false);
 
-                        loopAudio.setAttribute('data-loop-setup', 'true');
-                        console.log('[Loop] Setup complete: looping enabled');
+                        audioElement.setAttribute('data-loop-setup', 'true');
+                        console.log('[Loop] Setup complete: audio element found and looping enabled');
+                    } catch (e) {
+                        console.log('[Loop] Setup error:', e);
                     }
-                });
+                }
             }
 
             // Detect file changes and reload player
             function checkAndReloadLoop() {
-                const audioElements = document.querySelectorAll('#loop_audio_player audio');
-                if (audioElements.length === 0) return;
+                let audioElement = document.querySelector('#loop_audio_player audio');
+                if (!audioElement) {
+                    const container = document.querySelector('#loop_audio_player');
+                    if (container) {
+                        audioElement = container.querySelector('audio');
+                    }
+                }
 
-                const audio = audioElements[0];
-                if (!audio.src || !audio.src.includes('loop_current.mp3')) return;
+                if (!audioElement || !audioElement.src) return;
+                if (!audioElement.src.includes('loop_current.mp3')) return;
 
-                // Check if file has changed by comparing size
-                fetch(audio.src + '?t=' + Date.now(), {method: 'HEAD'})
+                // Check if file has changed
+                fetch(audioElement.src + '?t=' + Date.now(), {method: 'HEAD'})
                     .then(resp => {
                         const fileSize = resp.headers.get('content-length');
-                        if (fileSize && lastLoopFileSize > 0 && fileSize != lastLoopFileSize) {
-                            console.log('[Loop] File updated: ' + lastLoopFileSize + ' → ' + fileSize + ' bytes');
+                        if (!fileSize) return;
+
+                        if (lastLoopFileSize > 0 && parseInt(fileSize) !== parseInt(lastLoopFileSize)) {
+                            console.log('[Loop] File changed: ' + lastLoopFileSize + ' → ' + fileSize);
                             lastLoopFileSize = fileSize;
 
-                            // Force reload: pause and reload src to bust cache
-                            const wasPlaying = !audio.paused;
-                            audio.pause();
-                            audio.src = audio.src.split('?')[0] + '?t=' + Date.now();
-                            audio.load();
+                            const wasPlaying = !audioElement.paused;
+                            audioElement.pause();
+                            const baseUrl = audioElement.src.split('?')[0];
+                            audioElement.src = baseUrl + '?t=' + Date.now();
+                            audioElement.load();
+
                             if (wasPlaying) {
-                                audio.play().catch(e => console.log('[Loop] Play prevented:', e));
+                                setTimeout(() => {
+                                    audioElement.play().catch(e => console.log('[Loop] Play failed:', e));
+                                }, 100);
                             }
-                            console.log('[Loop] Reloaded with updated audio');
+                            console.log('[Loop] Reloaded audio from disk');
                         } else if (!lastLoopFileSize && fileSize) {
                             lastLoopFileSize = fileSize;
+                            console.log('[Loop] Initial file size tracked: ' + fileSize);
                         }
                     })
-                    .catch(e => console.log('[Loop] File check error:', e));
+                    .catch(e => console.log('[Loop] File check failed:', e));
             }
 
-            // Run periodic checks
-            setInterval(setupLoopPlayback, 500);
+            // Setup loop on page load and periodically
+            window.addEventListener('load', setupLoopPlayback);
+            document.addEventListener('DOMContentLoaded', setupLoopPlayback);
+            setInterval(setupLoopPlayback, 300);
             setInterval(checkAndReloadLoop, 1000);
+
+            console.log('[Loop] JavaScript initialized');
         </script>
         ''')
 
