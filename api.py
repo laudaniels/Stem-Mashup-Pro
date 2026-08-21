@@ -3,8 +3,11 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from pathlib import Path
 import json
+import logging
 from datetime import datetime
 from gradio_app import StudioState
+
+logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
 CORS(app)
@@ -54,15 +57,18 @@ def load_song(slot):
 
     # Load the song
     try:
-        result = state.load_song(slot, str(file_path))
+        logging.info(f"Loading song {slot} from {file_path}")
+        # Note: load_song expects (file_path, slot) not (slot, file_path)
+        result = state.load_song(str(file_path), slot)
+        logging.info(f"Load result: {result}")
+        return jsonify({
+            'path': str(file_path),
+            'name': file.filename,
+            'message': result[0]
+        })
     except Exception as e:
+        logging.error(f"Load failed: {e}", exc_info=True)
         return jsonify({'error': f'Load failed: {str(e)}'}), 500
-
-    return jsonify({
-        'path': str(file_path),
-        'name': file.filename,
-        'message': result[0]
-    })
 
 
 @app.route('/api/status')
