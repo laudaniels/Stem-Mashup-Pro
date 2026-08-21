@@ -56,6 +56,7 @@ export default function App() {
                 loopFile={loopFile}
                 onLoopReady={setLoopFile}
                 onStatus={setStatus}
+                onSettingsChange={setSettings}
               />
             </div>
           </>

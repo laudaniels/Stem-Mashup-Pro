@@ -1,11 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 
-export default function LoopPlayer({ sliders, settings, loopFile, onLoopReady, onStatus }) {
+export default function LoopPlayer({ sliders, settings, loopFile, onLoopReady, onStatus, onSettingsChange }) {
   const [rendering, setRendering] = useState(false)
   const [loopActive, setLoopActive] = useState(false)
   const audioRef = useRef(null)
   const fileCheckInterval = useRef(null)
   const [lastFileSize, setLastFileSize] = useState(0)
+
+  const handleSettingChange = (key, value) => {
+    if (onSettingsChange) {
+      onSettingsChange(prev => ({ ...prev, [key]: value }))
+    }
+  }
 
   useEffect(() => {
     // Check for file updates every 1 second
@@ -97,10 +103,7 @@ export default function LoopPlayer({ sliders, settings, loopFile, onLoopReady, o
             min="0"
             max="120"
             value={settings.loop_start}
-            onChange={(e) => {
-              // Need to update parent state via callback
-              console.log('Loop start:', e.target.value)
-            }}
+            onChange={(e) => handleSettingChange('loop_start', parseInt(e.target.value) || 0)}
           />
         </div>
 
@@ -108,7 +111,10 @@ export default function LoopPlayer({ sliders, settings, loopFile, onLoopReady, o
           <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9em' }}>
             Loop Length
           </label>
-          <select value={settings.loop_length} onChange={(e) => console.log('Loop length:', e.target.value)}>
+          <select
+            value={settings.loop_length}
+            onChange={(e) => handleSettingChange('loop_length', e.target.value)}
+          >
             <option value="4 bars (10s)">4 bars (10s)</option>
             <option value="8 bars (20s)">8 bars (20s)</option>
             <option value="16 bars (40s)">16 bars (40s)</option>

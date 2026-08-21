@@ -34,6 +34,7 @@ def serve_static(path):
 @app.route('/api/load-song/<int:slot>', methods=['POST'])
 def load_song(slot):
     """Load a song file"""
+    slot = int(slot)  # Convert to int
     if slot not in [0, 1]:
         return jsonify({'error': 'Invalid slot'}), 400
 
@@ -52,7 +53,10 @@ def load_song(slot):
     file.save(str(file_path))
 
     # Load the song
-    result = state.load_song(slot, str(file_path))
+    try:
+        result = state.load_song(slot, str(file_path))
+    except Exception as e:
+        return jsonify({'error': f'Load failed: {str(e)}'}), 500
 
     return jsonify({
         'path': str(file_path),
