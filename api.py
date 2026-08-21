@@ -88,26 +88,35 @@ def start_loop():
     """Start loop rendering with current settings"""
     data = request.json
 
-    # Update state with current sliders
-    state.sliders = data.get('sliders', state.sliders)
-    state.crossfader = data.get('crossfader', 50)
-    state.target_bpm = data.get('target_bpm', 0)
-    state.beatmatch = data.get('beatmatch', False)
+    try:
+        logging.info(f"Start loop request: {data}")
 
-    # Start the loop
-    loop_start = data.get('loop_start', 0)
-    loop_length = data.get('loop_length', '8 bars (20s)')
+        # Update state with current sliders
+        state.sliders = data.get('sliders', state.sliders)
+        state.crossfader = data.get('crossfader', 50)
+        state.target_bpm = data.get('target_bpm', 0)
+        state.beatmatch = data.get('beatmatch', False)
 
-    file_path, status = state.start_loop(loop_start, loop_length)
+        # Start the loop
+        loop_start = data.get('loop_start', 0)
+        loop_length = data.get('loop_length', '8 bars (20s)')
 
-    if not file_path:
-        return jsonify({'error': status}), 500
+        logging.info(f"Calling start_loop with: start={loop_start}, length={loop_length}")
+        file_path, status = state.start_loop(loop_start, loop_length)
+        logging.info(f"Start loop result: file={file_path}, status={status}")
 
-    return jsonify({
-        'file': file_path,
-        'status': status,
-        'message': 'Loop ready!'
-    })
+        if not file_path:
+            logging.error(f"No file path returned: {status}")
+            return jsonify({'error': status}), 500
+
+        return jsonify({
+            'file': file_path,
+            'status': status,
+            'message': 'Loop ready!'
+        })
+    except Exception as e:
+        logging.error(f"Start loop error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/stop-loop', methods=['POST'])
