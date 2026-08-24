@@ -25,29 +25,24 @@ def index():
     return send_from_directory('frontend/dist', 'index.html')
 
 
-@app.route('/<filename>')
-def serve_root_file(filename):
-    """Serve files from project root (loop_current.mp3, etc.)"""
-    file_path = BASE_DIR / filename
-    if file_path.exists() and file_path.is_file():
-        logging.info(f"Serving file from root: {file_path}")
-        return send_from_directory(str(BASE_DIR), filename)
-
-    # Try frontend dist
-    if Path(f'frontend/dist/{filename}').is_file():
-        return send_from_directory('frontend/dist', filename)
-
-    # Fall back to index.html for React routing
-    return send_from_directory('frontend/dist', 'index.html')
+@app.route('/loop_current.mp3')
+def serve_loop_file():
+    """Serve the loop audio file"""
+    logging.info(f"Serving loop file from: {BASE_DIR}/loop_current.mp3")
+    return send_from_directory(str(BASE_DIR), 'loop_current.mp3')
 
 
 @app.route('/<path:filepath>')
-def serve_nested_file(filepath):
-    """Serve nested files (assets/...)"""
-    if Path(f'frontend/dist/{filepath}').is_file():
+def serve_files(filepath):
+    """Serve static assets or fall back to React routing"""
+    # Try serving from frontend dist
+    dist_path = Path('frontend/dist') / filepath
+    if dist_path.is_file():
+        logging.info(f"Serving from dist: {filepath}")
         return send_from_directory('frontend/dist', filepath)
 
     # Fall back to index.html for React routing
+    logging.info(f"File not found: {filepath}, serving index.html for React routing")
     return send_from_directory('frontend/dist', 'index.html')
 
 
