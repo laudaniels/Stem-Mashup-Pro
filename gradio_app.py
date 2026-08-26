@@ -186,7 +186,8 @@ class StudioState:
         self.song_keys[slot] = None
         self._analysis_events[slot].clear()
 
-        self.add_status(f"📁 Song {slot+1} loaded: {Path(file_path).name}")
+        filename = Path(file_path).name
+        self.add_status(f"📁 Song {slot+1} loaded: {filename}")
 
         def analyze():
             # Use lock to prevent multiple concurrent analyses for this slot
@@ -245,7 +246,8 @@ class StudioState:
             self.add_status(f"⏳ Waiting for Song {other}...")
 
         # Return immediately with audio file - don't wait for analysis!
-        return f"Song {slot+1}: {Path(file_path).name} (analyzing…)", file_path, ""
+        # Return file path - Gradio will display it automatically
+        return f"Song {slot+1}: {filename} (analyzing…)", file_path, ""
 
     def update_key_override(self, slot, value):
         self.key_overrides[slot] = int(value) if value else -1
@@ -1053,9 +1055,12 @@ def create_app():
         with gr.Row():
             for i in range(2):
                 with gr.Column():
+                    # Song name display
                     song_name = gr.Textbox(label=f"Song {i+1}", value=f"Song {i+1}", interactive=False, scale=1)
                     song_name_displays.append(song_name)
-                    audio_player = gr.Audio(label="Load & Preview", type="filepath", interactive=True)
+
+                    # Single audio component for upload + playback
+                    audio_player = gr.Audio(label="Upload & Play", type="filepath", interactive=True, sources=["upload", "microphone"])
                     audio_players.append(audio_player)
                     file_inputs.append(audio_player)
 

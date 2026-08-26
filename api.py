@@ -28,8 +28,19 @@ def index():
 @app.route('/loop_current.mp3')
 def serve_loop_file():
     """Serve the loop audio file"""
-    logging.info(f"Serving loop file from: {BASE_DIR}/loop_current.mp3")
-    return send_from_directory(str(BASE_DIR), 'loop_current.mp3')
+    file_path = BASE_DIR / 'loop_current.mp3'
+    logging.info(f"GET /loop_current.mp3 - checking: {file_path}")
+    logging.info(f"File exists: {file_path.exists()}, size: {file_path.stat().st_size if file_path.exists() else 'N/A'}")
+
+    if not file_path.exists():
+        logging.error(f"File not found: {file_path}")
+        return '', 404
+
+    try:
+        return send_from_directory(str(BASE_DIR), 'loop_current.mp3')
+    except Exception as e:
+        logging.error(f"Error serving file: {e}", exc_info=True)
+        return '', 500
 
 
 @app.route('/<path:filepath>')
@@ -49,6 +60,96 @@ def serve_files(filepath):
 
 
 # ===== API Routes =====
+@app.route('/api/separate-stems', methods=['POST'])
+def separate_stems():
+    """Separate audio into stems"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'Empty filename'}), 400
+
+    try:
+        import shutil
+        import time
+
+        # Save uploaded file
+        audio_dir = BASE_DIR / 'Audio'
+        audio_dir.mkdir(exist_ok=True)
+
+        file_path = audio_dir / file.filename
+        file.save(str(file_path))
+        logging.info(f"Processing stems for: {file_path}")
+
+        # Separate stems using mashup_engine
+        from mashup_engine import MashupEngine
+        engine = MashupEngine()
+
+        # Get BPM and key
+        logging.info("Analyzing BPM...")
+        bpm, _ = engine.analyze_track(str(file_path))
+        logging.info("Analyzing Key...")
+        key = engine.analyze_key(str(file_path))
+        key_name = engine._key_to_note(key) if key >= 0 else "Unknown"
+
+        # Separate stems
+        logging.info("Separating stems...")
+        stem_dict = engine.separate_stems([str(file_path)])[0]
+
+        # Copy stems to a simple location for serving
+        serve_dir = audio_dir / 'stems'
+        serve_dir.mkdir(exist_ok=True)
+
+        # Use timestamp to avoid conflicts
+        timestamp = str(int(time.time() * 1000))
+        session_dir = serve_dir / timestamp
+        session_dir.mkdir(exist_ok=True)
+
+        stems = {}
+        for stem_name, stem_path in stem_dict.items():
+            if Path(stem_path).exists():
+                # Copy to serve directory
+                dest_path = session_dir / f"{stem_name}.wav"
+                shutil.copy2(stem_path, str(dest_path))
+                stems[stem_name] = f"/api/audio/{timestamp}/{stem_name}.wav"
+                logging.info(f"✅ Copied {stem_name} to {dest_path}")
+            else:
+                logging.error(f"❌ Stem file not found: {stem_path}")
+
+        if not stems:
+            raise Exception("No stems were separated successfully")
+
+        return jsonify({
+            'stems': stems,
+            'bpm': round(bpm, 1),
+            'key': key_name,
+            'filename': file.filename
+        })
+    except Exception as e:
+        logging.error(f"Stem separation failed: {e}", exc_info=True)
+        return jsonify({'error': f'Separation failed: {str(e)}'}), 500
+
+
+@app.route('/api/audio/<path:filepath>')
+def serve_audio(filepath):
+    """Serve audio files"""
+    audio_dir = BASE_DIR / 'Audio' / 'stems'
+    file_path = audio_dir / filepath
+
+    logging.info(f"[Audio] Requested: {filepath}")
+    logging.info(f"[Audio] Looking in: {audio_dir}")
+    logging.info(f"[Audio] Full path: {file_path}")
+    logging.info(f"[Audio] Exists: {file_path.exists()}")
+
+    if file_path.exists():
+        logging.info(f"✅ Serving: {filepath}")
+        return send_from_directory(str(audio_dir), filepath, mimetype='audio/wav')
+
+    logging.error(f"❌ Not found: {file_path}")
+    return jsonify({'error': 'File not found'}), 404
+
+
 @app.route('/api/load-song/<int:slot>', methods=['POST'])
 def load_song(slot):
     """Load a song file"""
@@ -159,6 +260,56 @@ def render_final():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ===== Audio Stats =====
+@app.route('/api/audio-stats', methods=['GET'])
+def get_audio_stats():
+    """Get audio files count and total size"""
+    try:
+        audio_dir = BASE_DIR / 'Audio'
+        if not audio_dir.exists():
+            return jsonify({'file_count': 0, 'total_size_mb': 0, 'total_size_formatted': '0 MB'})
+
+        file_count = 0
+        total_size = 0
+
+        for file_path in audio_dir.rglob('*'):
+            if file_path.is_file():
+                file_count += 1
+                total_size += file_path.stat().st_size
+
+        total_size_mb = total_size / (1024 * 1024)
+        total_size_formatted = f"{total_size_mb:.1f} MB" if total_size_mb >= 1 else f"{total_size / 1024:.1f} KB"
+
+        return jsonify({
+            'file_count': file_count,
+            'total_size_mb': round(total_size_mb, 2),
+            'total_size_formatted': total_size_formatted
+        })
+    except Exception as e:
+        logging.error(f"Stats error: {e}", exc_info=True)
+        return jsonify({'file_count': 0, 'total_size_mb': 0, 'total_size_formatted': '0 MB'})
+
+
+# ===== Cleanup =====
+@app.route('/api/cleanup', methods=['POST'])
+def cleanup_audio():
+    """Clean up all generated audio files"""
+    try:
+        import shutil
+        audio_dir = BASE_DIR / 'Audio'
+
+        if audio_dir.exists():
+            shutil.rmtree(str(audio_dir))
+            audio_dir.mkdir(exist_ok=True)
+            logging.info("✅ Cleaned up all audio files")
+            return jsonify({'status': 'success', 'message': 'All audio files cleaned up'})
+        else:
+            return jsonify({'status': 'success', 'message': 'No audio files to clean'})
+    except Exception as e:
+        logging.error(f"Cleanup failed: {e}", exc_info=True)
+        return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
 
 
 # ===== Health Check =====

@@ -26,12 +26,12 @@ export default function LoopPlayer({ sliders, settings, loopFile, onLoopReady, o
           console.log('[Loop] File changed:', lastFileSize, '→', fileSize)
           setLastFileSize(fileSize)
 
-          // Reload audio
-          if (audioRef.current) {
+          // Reload audio using loopFile state (don't rely on audioRef.current.src which might be empty)
+          if (audioRef.current && loopFile) {
             const wasPlaying = !audioRef.current.paused
             audioRef.current.pause()
-            const baseUrl = audioRef.current.src.split('?')[0]
-            audioRef.current.src = baseUrl + '?t=' + Date.now()
+            const newSrc = loopFile + '?t=' + Date.now()
+            audioRef.current.src = newSrc
             audioRef.current.load()
 
             if (wasPlaying) {
