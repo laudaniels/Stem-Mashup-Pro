@@ -300,10 +300,21 @@ def get_audio_stats():
         return jsonify({'file_count': 0, 'total_size_mb': 0, 'total_size_formatted': '0 MB'})
 
 
+# ===== Processing Progress =====
+_processing_state = {'slot': None, 'stem': None, 'status': None}
+
+
+@app.route('/api/process-status', methods=['GET'])
+def get_process_status():
+    """Get current processing status"""
+    return jsonify(_processing_state)
+
+
 # ===== Cleanup =====
 @app.route('/api/process-stems', methods=['POST'])
 def process_stems():
     """Combined beatmatch + transpose processing"""
+    global _processing_state
     data = request.json
     try:
         source_bpm = data.get('source_bpm')
@@ -311,8 +322,9 @@ def process_stems():
         source_key = data.get('source_key')
         target_key = data.get('target_key')
         timestamp = data.get('timestamp')
+        slot = data.get('slot', 0)
 
-        logging.info(f"Processing stems: BPM {source_bpm}→{target_bpm}, Key {source_key}→{target_key}")
+        logging.info(f"Processing stems (slot {slot}): BPM {source_bpm}→{target_bpm}, Key {source_key}→{target_key}")
 
         if not timestamp:
             logging.error("Missing timestamp in request")
@@ -329,12 +341,16 @@ def process_stems():
         processed_stems = {}
 
         for stem in ['vocals', 'drums', 'bass', 'other']:
+            # Update progress state
+            _processing_state = {'slot': slot, 'stem': stem, 'status': 'processing'}
+
             stem_path = stems_dir / f"{stem}.wav"
             if not stem_path.exists():
                 logging.warning(f"Stem not found: {stem_path}")
+                _processing_state = {'slot': slot, 'stem': stem, 'status': 'skipped'}
                 continue
 
-            logging.info(f"Processing stem: {stem}")
+            logging.info(f"🔄 Processing {stem} (slot {slot})...")
 
             # Use original or previously processed version
             current_path = stem_path
@@ -346,7 +362,8 @@ def process_stems():
                     tempo_ratio = float(target_bpm) / float(source_bpm)
                     if 0.5 <= tempo_ratio <= 2.0:
                         temp_path = stems_dir / f"{stem}_tempo.wav"
-                        logging.info(f"  Applying beatmatch: ratio {tempo_ratio:.2f}")
+                        _processing_state['status'] = f'beatmatching {stem}...'
+                        logging.info(f"  🎵 Beatmatching {stem}: ratio {tempo_ratio:.2f}")
                         if engine.time_stretch_audio(str(current_path), str(temp_path), tempo_ratio):
                             current_path = temp_path
                             logging.info(f"  ✅ Beatmatched {stem}")
@@ -366,31 +383,38 @@ def process_stems():
                         if semitones < -6:
                             semitones += 12
 
-                        logging.info(f"  Applying transpose: {semitones} semitones")
+                        _processing_state['status'] = f'transposing {stem}...'
+                        logging.info(f"  🎼 Transposing {stem}: {semitones} semitones")
                         if engine.pitch_shift_audio(str(current_path), str(output_path), semitones):
                             processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
+                            _processing_state['status'] = f'{stem} ✅'
                             logging.info(f"  ✅ Transposed {stem}")
                         else:
                             logging.error(f"  ❌ Transpose failed for {stem}")
                             processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+                            _processing_state['status'] = f'{stem} failed'
                     else:
                         logging.warning(f"  Invalid key indices: {source_key}→{target_key}")
                         processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+                        _processing_state['status'] = f'{stem} (no key change)'
                 else:
                     # Only beatmatch, no transpose needed
                     if current_path != stem_path:
                         import shutil
                         shutil.copy2(str(current_path), str(output_path))
                         processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
+                        _processing_state['status'] = f'{stem} ✅'
                         logging.info(f"✅ Copied beatmatched {stem}")
                     else:
                         processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+                        _processing_state['status'] = f'{stem} (no change)'
                         logging.info(f"No processing needed for {stem}")
 
             except Exception as stem_error:
                 logging.error(f"Error processing stem {stem}: {stem_error}", exc_info=True)
                 # Fall back to original stem
                 processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+                _processing_state['status'] = f'{stem} error'
 
         if not processed_stems:
             logging.error("No stems were processed")

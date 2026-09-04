@@ -305,6 +305,7 @@ export default function DualMixer() {
 
     if (!needsBeatmatch && !needsTranspose) return;
 
+    // Set initial status
     setTransposingStatus(prev => {
       const n = [...prev];
       n[slot] = 'processing';
@@ -316,6 +317,32 @@ export default function DualMixer() {
       return n;
     });
 
+    // Start polling for status updates
+    const statusPoller = setInterval(async () => {
+      try {
+        const statusRes = await fetch('/api/process-status');
+        const status = await statusRes.json();
+        if (status.slot === slot && status.status) {
+          const statusText = status.status; // e.g., "beatmatching vocals..." or "transposing drums..." or "vocals ✅"
+          console.log(`⏳ Processing (slot ${slot + 1}): ${statusText}`);
+
+          // Update both status displays with the detailed status
+          setTransposingStatus(prev => {
+            const n = [...prev];
+            n[slot] = statusText;
+            return n;
+          });
+          setBeatmatchStatus(prev => {
+            const n = [...prev];
+            n[slot] = statusText;
+            return n;
+          });
+        }
+      } catch (err) {
+        // Silently ignore polling errors
+      }
+    }, 200);
+
     try {
       const response = await fetch('/api/process-stems', {
         method: 'POST',
@@ -325,10 +352,12 @@ export default function DualMixer() {
           target_bpm: needsBeatmatch ? newTargetBpm : null,
           source_key: needsTranspose ? sourceKey : null,
           target_key: needsTranspose ? newTargetKey : null,
-          timestamp: metadata[slot].timestamp
+          timestamp: metadata[slot].timestamp,
+          slot: slot
         })
       });
 
+      clearInterval(statusPoller);
       const data = await response.json();
 
       if (data.processed_stems) {
@@ -377,6 +406,7 @@ export default function DualMixer() {
         throw new Error(data.error || 'Processing failed');
       }
     } catch (err) {
+      clearInterval(statusPoller);
       console.error(`Processing error (Song ${slot + 1}):`, err);
       setTransposingStatus(prev => {
         const n = [...prev];
