@@ -113,7 +113,7 @@ cd Stem-Mashup-Pro
 
 2. **Create and activate a Python virtual environment:**
 ```bash
-python3 -m venv venv
+python3 -m venv .venv
 source venv/bin/activate    # macOS/Linux
 venv\Scripts\activate       # Windows
 ```
@@ -153,6 +153,7 @@ Ensure FFmpeg is in your PATH. Test with: `ffmpeg -version`
 
 ### 1. Start the Flask Backend
 ```bash
+source .venv/bin/activate
 python3 api.py
 ```
 Runs at `http://localhost:5000`
