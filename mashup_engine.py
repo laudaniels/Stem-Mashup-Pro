@@ -175,33 +175,35 @@ class MashupEngine:
         import librosa
         import soundfile as sf
         import numpy as np
+        import logging
+        import os
 
         try:
-            # Load audio
+            # Load audio (librosa returns mono by default, mono=False for stereo)
             y, sr = librosa.load(input_path, sr=None, mono=False)
+            logging.info(f"Loaded audio shape: {y.shape}, sr={sr}")
 
             # Handle mono vs stereo
             if len(y.shape) == 1:
-                # Mono audio
+                # Mono audio: shape (samples,)
                 y_stretched = librosa.effects.time_stretch(y, rate=tempo_ratio)
             else:
-                # Stereo - process each channel
-                y_stretched = np.zeros((y.shape[0], int(y.shape[1] / tempo_ratio)))
-                for ch in range(y.shape[0]):
+                # Stereo: shape (channels, samples)
+                channels = y.shape[0]
+                y_stretched = np.zeros((channels, int(y.shape[1] / tempo_ratio)))
+                for ch in range(channels):
                     y_stretched[ch] = librosa.effects.time_stretch(y[ch], rate=tempo_ratio)
+                # Transpose to (samples, channels) for soundfile
+                y_stretched = y_stretched.T
 
             # Ensure output directory exists
-            import os
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            # Write with proper parameters
-            sf.write(output_path, y_stretched.T if len(y_stretched.shape) > 1 else y_stretched, sr, subtype='PCM_16')
-
-            import logging
+            # Write audio file
+            sf.write(output_path, y_stretched, sr, subtype='PCM_16')
             logging.info(f"✅ Time-stretched {input_path} → {output_path} by ratio {tempo_ratio}")
             return True
         except Exception as e:
-            import logging
             logging.error(f"Time stretch failed for {input_path}: {e}", exc_info=True)
             return False
 
@@ -212,33 +214,35 @@ class MashupEngine:
         import librosa
         import soundfile as sf
         import numpy as np
+        import logging
+        import os
 
         try:
-            # Load audio
+            # Load audio (librosa returns mono by default, mono=False for stereo)
             y, sr = librosa.load(input_path, sr=None, mono=False)
+            logging.info(f"Loaded audio shape: {y.shape}, sr={sr}")
 
             # Handle mono vs stereo
             if len(y.shape) == 1:
-                # Mono audio
+                # Mono audio: shape (samples,)
                 y_shifted = librosa.effects.pitch_shift(y, sr=sr, n_steps=semitones)
             else:
-                # Stereo - process each channel
+                # Stereo: shape (channels, samples)
+                channels = y.shape[0]
                 y_shifted = np.zeros_like(y)
-                for ch in range(y.shape[0]):
+                for ch in range(channels):
                     y_shifted[ch] = librosa.effects.pitch_shift(y[ch], sr=sr, n_steps=semitones)
+                # Transpose to (samples, channels) for soundfile
+                y_shifted = y_shifted.T
 
             # Ensure output directory exists
-            import os
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            # Write with proper parameters
-            sf.write(output_path, y_shifted.T if len(y_shifted.shape) > 1 else y_shifted, sr, subtype='PCM_16')
-
-            import logging
+            # Write audio file
+            sf.write(output_path, y_shifted, sr, subtype='PCM_16')
             logging.info(f"✅ Pitch-shifted {input_path} → {output_path} by {semitones} semitones")
             return True
         except Exception as e:
-            import logging
             logging.error(f"Pitch shift failed for {input_path}: {e}", exc_info=True)
             return False
 

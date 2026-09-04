@@ -20,6 +20,12 @@ BASE_DIR = Path(__file__).resolve().parent
 
 
 # ===== Static Files =====
+@app.route('/favicon.ico')
+def favicon():
+    """Return a simple 204 No Content for favicon requests"""
+    return '', 204
+
+
 @app.route('/')
 def index():
     """Serve React frontend"""
@@ -306,10 +312,17 @@ def process_stems():
         target_key = data.get('target_key')
         timestamp = data.get('timestamp')
 
+        logging.info(f"Processing stems: BPM {source_bpm}→{target_bpm}, Key {source_key}→{target_key}")
+
         if not timestamp:
+            logging.error("Missing timestamp in request")
             return jsonify({'error': 'Missing timestamp'}), 400
 
         stems_dir = BASE_DIR / 'Audio' / 'stems' / timestamp
+        if not stems_dir.exists():
+            logging.error(f"Stems directory not found: {stems_dir}")
+            return jsonify({'error': 'Stems directory not found'}), 400
+
         from mashup_engine import MashupEngine
         engine = MashupEngine()
 
@@ -321,58 +334,76 @@ def process_stems():
                 logging.warning(f"Stem not found: {stem_path}")
                 continue
 
+            logging.info(f"Processing stem: {stem}")
+
             # Use original or previously processed version
             current_path = stem_path
             output_path = stems_dir / f"{stem}_processed.wav"
 
-            # Apply beatmatch if needed
-            if source_bpm and target_bpm and source_bpm != target_bpm:
-                tempo_ratio = target_bpm / source_bpm
-                if 0.5 <= tempo_ratio <= 2.0:
-                    temp_path = stems_dir / f"{stem}_tempo.wav"
-                    if engine.time_stretch_audio(str(current_path), str(temp_path), tempo_ratio):
-                        current_path = temp_path
-                        logging.info(f"✅ Beatmatched {stem}")
+            try:
+                # Apply beatmatch if needed
+                if source_bpm and target_bpm and float(source_bpm) != float(target_bpm):
+                    tempo_ratio = float(target_bpm) / float(source_bpm)
+                    if 0.5 <= tempo_ratio <= 2.0:
+                        temp_path = stems_dir / f"{stem}_tempo.wav"
+                        logging.info(f"  Applying beatmatch: ratio {tempo_ratio:.2f}")
+                        if engine.time_stretch_audio(str(current_path), str(temp_path), tempo_ratio):
+                            current_path = temp_path
+                            logging.info(f"  ✅ Beatmatched {stem}")
+                        else:
+                            logging.error(f"  ❌ Beatmatch failed for {stem}")
 
-            # Apply transpose if needed
-            if source_key and target_key and source_key != target_key:
-                keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-                source_idx = keys.index(source_key) if source_key in keys else -1
-                target_idx = keys.index(target_key) if target_key in keys else -1
+                # Apply transpose if needed
+                if source_key and target_key and source_key != target_key:
+                    keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+                    source_idx = keys.index(source_key) if source_key in keys else -1
+                    target_idx = keys.index(target_key) if target_key in keys else -1
 
-                if source_idx >= 0 and target_idx >= 0:
-                    semitones = target_idx - source_idx
-                    if semitones > 6:
-                        semitones -= 12
-                    if semitones < -6:
-                        semitones += 12
+                    if source_idx >= 0 and target_idx >= 0:
+                        semitones = target_idx - source_idx
+                        if semitones > 6:
+                            semitones -= 12
+                        if semitones < -6:
+                            semitones += 12
 
-                    if engine.pitch_shift_audio(str(current_path), str(output_path), semitones):
-                        processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
-                        logging.info(f"✅ Processed {stem} (BPM: {source_bpm}→{target_bpm}, Key: {source_key}→{target_key})")
+                        logging.info(f"  Applying transpose: {semitones} semitones")
+                        if engine.pitch_shift_audio(str(current_path), str(output_path), semitones):
+                            processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
+                            logging.info(f"  ✅ Transposed {stem}")
+                        else:
+                            logging.error(f"  ❌ Transpose failed for {stem}")
+                            processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
                     else:
+                        logging.warning(f"  Invalid key indices: {source_key}→{target_key}")
                         processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
                 else:
-                    processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
-            else:
-                # Only beatmatch, no transpose needed
-                if current_path != stem_path:
-                    import shutil
-                    shutil.copy2(str(current_path), str(output_path))
-                    processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
-                else:
-                    processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+                    # Only beatmatch, no transpose needed
+                    if current_path != stem_path:
+                        import shutil
+                        shutil.copy2(str(current_path), str(output_path))
+                        processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
+                        logging.info(f"✅ Copied beatmatched {stem}")
+                    else:
+                        processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+                        logging.info(f"No processing needed for {stem}")
+
+            except Exception as stem_error:
+                logging.error(f"Error processing stem {stem}: {stem_error}", exc_info=True)
+                # Fall back to original stem
+                processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
 
         if not processed_stems:
+            logging.error("No stems were processed")
             return jsonify({'error': 'Processing failed'}), 500
 
+        logging.info(f"✅ Processing complete. Processed {len(processed_stems)} stems")
         return jsonify({
             'status': 'success',
             'processed_stems': processed_stems
         })
     except Exception as e:
         logging.error(f"Process error: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
 
 
 @app.route('/api/beatmatch-stems', methods=['POST'])
