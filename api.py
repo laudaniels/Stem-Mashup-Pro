@@ -1,9 +1,10 @@
 """Flask API for Stem Mashup Pro"""
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from pathlib import Path
 import json
 import logging
+import time
 from datetime import datetime
 from gradio_app import StudioState
 
@@ -124,7 +125,8 @@ def separate_stems():
             'stems': stems,
             'bpm': round(bpm, 1),
             'key': key_name,
-            'filename': file.filename
+            'filename': file.filename,
+            'timestamp': timestamp
         })
     except Exception as e:
         logging.error(f"Stem separation failed: {e}", exc_info=True)
@@ -293,6 +295,370 @@ def get_audio_stats():
 
 
 # ===== Cleanup =====
+@app.route('/api/process-stems', methods=['POST'])
+def process_stems():
+    """Combined beatmatch + transpose processing"""
+    data = request.json
+    try:
+        source_bpm = data.get('source_bpm')
+        target_bpm = data.get('target_bpm')
+        source_key = data.get('source_key')
+        target_key = data.get('target_key')
+        timestamp = data.get('timestamp')
+
+        if not timestamp:
+            return jsonify({'error': 'Missing timestamp'}), 400
+
+        stems_dir = BASE_DIR / 'Audio' / 'stems' / timestamp
+        from mashup_engine import MashupEngine
+        engine = MashupEngine()
+
+        processed_stems = {}
+
+        for stem in ['vocals', 'drums', 'bass', 'other']:
+            stem_path = stems_dir / f"{stem}.wav"
+            if not stem_path.exists():
+                logging.warning(f"Stem not found: {stem_path}")
+                continue
+
+            # Use original or previously processed version
+            current_path = stem_path
+            output_path = stems_dir / f"{stem}_processed.wav"
+
+            # Apply beatmatch if needed
+            if source_bpm and target_bpm and source_bpm != target_bpm:
+                tempo_ratio = target_bpm / source_bpm
+                if 0.5 <= tempo_ratio <= 2.0:
+                    temp_path = stems_dir / f"{stem}_tempo.wav"
+                    if engine.time_stretch_audio(str(current_path), str(temp_path), tempo_ratio):
+                        current_path = temp_path
+                        logging.info(f"✅ Beatmatched {stem}")
+
+            # Apply transpose if needed
+            if source_key and target_key and source_key != target_key:
+                keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+                source_idx = keys.index(source_key) if source_key in keys else -1
+                target_idx = keys.index(target_key) if target_key in keys else -1
+
+                if source_idx >= 0 and target_idx >= 0:
+                    semitones = target_idx - source_idx
+                    if semitones > 6:
+                        semitones -= 12
+                    if semitones < -6:
+                        semitones += 12
+
+                    if engine.pitch_shift_audio(str(current_path), str(output_path), semitones):
+                        processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
+                        logging.info(f"✅ Processed {stem} (BPM: {source_bpm}→{target_bpm}, Key: {source_key}→{target_key})")
+                    else:
+                        processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+                else:
+                    processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+            else:
+                # Only beatmatch, no transpose needed
+                if current_path != stem_path:
+                    import shutil
+                    shutil.copy2(str(current_path), str(output_path))
+                    processed_stems[stem] = f"/api/audio/{timestamp}/{stem}_processed.wav"
+                else:
+                    processed_stems[stem] = f"/api/audio/{timestamp}/{stem}"
+
+        if not processed_stems:
+            return jsonify({'error': 'Processing failed'}), 500
+
+        return jsonify({
+            'status': 'success',
+            'processed_stems': processed_stems
+        })
+    except Exception as e:
+        logging.error(f"Process error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/beatmatch-stems', methods=['POST'])
+def beatmatch_stems():
+    """Time-stretch stems to target BPM"""
+    data = request.json
+    try:
+        source_bpm = data.get('source_bpm')
+        target_bpm = data.get('target_bpm')
+        timestamp = data.get('timestamp')
+
+        if not all([source_bpm, target_bpm, timestamp]):
+            return jsonify({'error': 'Missing parameters'}), 400
+
+        if source_bpm == target_bpm:
+            return jsonify({'status': 'no_beatmatch', 'ratio': 1.0})
+
+        # Calculate tempo ratio
+        tempo_ratio = target_bpm / source_bpm
+        if tempo_ratio < 0.5 or tempo_ratio > 2.0:
+            return jsonify({'error': f'Tempo ratio {tempo_ratio:.2f} out of range (0.5-2.0)'}), 400
+
+        # Time-stretch all stems
+        stems_dir = BASE_DIR / 'Audio' / 'stems' / timestamp
+        from mashup_engine import MashupEngine
+        engine = MashupEngine()
+
+        beatmatched_stems = {}
+        for stem in ['vocals', 'drums', 'bass', 'other']:
+            stem_path = stems_dir / f"{stem}.wav"
+            if not stem_path.exists():
+                logging.warning(f"Stem not found: {stem_path}")
+                continue
+
+            beatmatched_path = stems_dir / f"{stem}_beatmatched.wav"
+            if engine.time_stretch_audio(str(stem_path), str(beatmatched_path), tempo_ratio):
+                beatmatched_stems[stem] = f"/api/audio/{timestamp}/{stem}_beatmatched.wav"
+                logging.info(f"✅ Beatmatched {stem} from {source_bpm} to {target_bpm} BPM (ratio: {tempo_ratio:.2f})")
+            else:
+                logging.error(f"❌ Failed to beatmatch {stem}")
+
+        if not beatmatched_stems:
+            return jsonify({'error': 'Beatmatching failed'}), 500
+
+        return jsonify({
+            'status': 'success',
+            'source_bpm': source_bpm,
+            'target_bpm': target_bpm,
+            'ratio': tempo_ratio,
+            'beatmatched_stems': beatmatched_stems
+        })
+    except Exception as e:
+        logging.error(f"Beatmatch error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/transpose-stems', methods=['POST'])
+def transpose_stems():
+    """Transpose stems to a target key"""
+    data = request.json
+    try:
+        source_key = data.get('source_key')
+        target_key = data.get('target_key')
+        timestamp = data.get('timestamp')
+
+        if not all([source_key, target_key, timestamp]):
+            return jsonify({'error': 'Missing parameters'}), 400
+
+        # Calculate semitone shift
+        keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        source_idx = keys.index(source_key) if source_key in keys else -1
+        target_idx = keys.index(target_key) if target_key in keys else -1
+
+        if source_idx == -1 or target_idx == -1:
+            return jsonify({'error': 'Invalid key'}), 400
+
+        semitones = target_idx - source_idx
+        if semitones > 6:
+            semitones -= 12
+        if semitones < -6:
+            semitones += 12
+
+        if semitones == 0:
+            # No transposition needed
+            return jsonify({'status': 'no_transposition', 'semitones': 0})
+
+        # Transpose all stems
+        stems_dir = BASE_DIR / 'Audio' / 'stems' / timestamp
+        from mashup_engine import MashupEngine
+        engine = MashupEngine()
+
+        transposed_stems = {}
+        for stem in ['vocals', 'drums', 'bass', 'other']:
+            stem_path = stems_dir / f"{stem}.wav"
+            if not stem_path.exists():
+                logging.warning(f"Stem not found: {stem_path}")
+                continue
+
+            transposed_path = stems_dir / f"{stem}_transposed.wav"
+            if engine.pitch_shift_audio(str(stem_path), str(transposed_path), semitones):
+                transposed_stems[stem] = f"/api/audio/{timestamp}/{stem}_transposed.wav"
+                logging.info(f"✅ Transposed {stem} by {semitones} semitones")
+            else:
+                logging.error(f"❌ Failed to transpose {stem}")
+
+        if not transposed_stems:
+            return jsonify({'error': 'Transposition failed'}), 500
+
+        return jsonify({
+            'status': 'success',
+            'semitones': semitones,
+            'transposed_stems': transposed_stems
+        })
+    except Exception as e:
+        logging.error(f"Transpose error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/render-final-mix', methods=['POST'])
+def render_final_mix():
+    """Render final mixed WAV from stems with current volumes"""
+    data = request.json
+    try:
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        timestamps = data.get('timestamps')  # [timestamp_slot0, timestamp_slot1]
+        volumes = data.get('volumes')  # {0: {stem: vol}, 1: {stem: vol}}
+        crossfader = data.get('crossfader', 50) / 100.0
+
+        if not timestamps or not volumes:
+            return jsonify({'error': 'Missing parameters'}), 400
+
+        # Create output file
+        output_dir = BASE_DIR / 'Audio' / 'renders'
+        output_dir.mkdir(exist_ok=True)
+        output_file = output_dir / f"final_mix_{int(time.time() * 1000)}.wav"
+
+        # Build FFmpeg command to mix stems
+        inputs = []
+        filters = []
+        input_idx = 0
+
+        for slot in range(2):
+            if not timestamps[slot]:
+                continue
+
+            stems_dir = BASE_DIR / 'Audio' / 'stems' / timestamps[slot]
+            slot_volume = (1 - crossfader) if slot == 0 else crossfader
+
+            for stem in ['vocals', 'drums', 'bass', 'other']:
+                # Try processed version first, then original
+                stem_file = stems_dir / f"{stem}_processed.wav"
+                if not stem_file.exists():
+                    stem_file = stems_dir / f"{stem}.wav"
+
+                if stem_file.exists():
+                    inputs.append('-i')
+                    inputs.append(str(stem_file))
+
+                    stem_volume = volumes.get(slot, {}).get(stem, 1.0)
+                    master_volume = slot_volume * stem_volume
+
+                    filters.append(f"[{input_idx}]volume={master_volume}[s{input_idx}]")
+                    input_idx += 1
+
+        if input_idx == 0:
+            return jsonify({'error': 'No stems found'}), 400
+
+        # Concat all volumes
+        concat_str = ''.join([f'[s{i}]' for i in range(input_idx)])
+        filter_complex = ';'.join(filters) + f';{concat_str}amix=inputs={input_idx}[out]'
+
+        cmd = ['ffmpeg', '-y'] + inputs + [
+            '-filter_complex', filter_complex,
+            '-map', '[out]',
+            '-acodec', 'pcm_s16le',
+            str(output_file)
+        ]
+
+        logging.info(f"Rendering mix with {input_idx} stems...")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+
+        if result.returncode == 0 and output_file.exists():
+            logging.info(f"✅ Mix rendered: {output_file}")
+            return jsonify({
+                'status': 'success',
+                'file': f'/api/download-file/{output_file.name}',
+                'size_mb': round(output_file.stat().st_size / (1024 * 1024), 2)
+            })
+        else:
+            logging.error(f"FFmpeg error: {result.stderr}")
+            return jsonify({'error': 'Rendering failed'}), 500
+
+    except Exception as e:
+        logging.error(f"Render error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/download-stems-zip', methods=['POST'])
+def download_stems_zip():
+    """Download all stems as ZIP"""
+    data = request.json
+    try:
+        import zipfile
+        import io
+
+        timestamps = data.get('timestamps')
+        include_original = data.get('include_original', True)
+        include_processed = data.get('include_processed', True)
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for slot, timestamp in enumerate(timestamps):
+                if not timestamp:
+                    continue
+
+                stems_dir = BASE_DIR / 'Audio' / 'stems' / timestamp
+                song_name = f"Song_{slot + 1}"
+
+                # Add original stems
+                if include_original:
+                    for stem in ['vocals', 'drums', 'bass', 'other']:
+                        stem_file = stems_dir / f"{stem}.wav"
+                        if stem_file.exists():
+                            arcname = f"{song_name}/original/{stem}.wav"
+                            zip_file.write(str(stem_file), arcname)
+
+                # Add processed stems
+                if include_processed:
+                    for stem in ['vocals', 'drums', 'bass', 'other']:
+                        stem_file = stems_dir / f"{stem}_processed.wav"
+                        if stem_file.exists():
+                            arcname = f"{song_name}/processed/{stem}.wav"
+                            zip_file.write(str(stem_file), arcname)
+
+        zip_buffer.seek(0)
+        timestamp_str = int(time.time() * 1000)
+        zip_path = BASE_DIR / 'Audio' / f'stems_{timestamp_str}.zip'
+
+        with open(zip_path, 'wb') as f:
+            f.write(zip_buffer.getvalue())
+
+        logging.info(f"✅ ZIP created: {zip_path}")
+        return jsonify({
+            'status': 'success',
+            'file': f'/api/download-file/{zip_path.name}',
+            'size_mb': round(zip_path.stat().st_size / (1024 * 1024), 2)
+        })
+
+    except Exception as e:
+        logging.error(f"ZIP error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/download-file/<filename>')
+def download_file(filename):
+    """Download a file"""
+    try:
+        from pathlib import Path
+
+        # Security: only allow files from specific directories
+        safe_dirs = [
+            BASE_DIR / 'Audio' / 'stems',
+            BASE_DIR / 'Audio' / 'renders',
+            BASE_DIR / 'Audio'
+        ]
+
+        file_path = None
+        for safe_dir in safe_dirs:
+            candidate = safe_dir / filename
+            if candidate.exists() and candidate.is_file():
+                file_path = candidate
+                break
+
+        if not file_path:
+            return jsonify({'error': 'File not found'}), 404
+
+        return send_file(str(file_path), as_attachment=True)
+
+    except Exception as e:
+        logging.error(f"Download error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/cleanup', methods=['POST'])
 def cleanup_audio():
     """Clean up all generated audio files"""

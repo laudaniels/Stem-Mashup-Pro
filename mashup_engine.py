@@ -125,9 +125,27 @@ class MashupEngine:
         return tempo, beat_anchor
 
     def analyze_key(self, song_path):
-        """Detect the musical key of a track using chroma features.
+        """Detect the musical key using essentia (improved) or fallback to librosa.
         Returns key as integer: 0=C, 1=C#, ..., 11=B.
         Returns -1 if detection fails."""
+        try:
+            # Try essentia first (more accurate)
+            from essentia.standard import MonoLoader, KeyExtractor
+
+            loader = MonoLoader(filename=song_path, sampleRate=44100)
+            audio = loader()
+            key_extractor = KeyExtractor()
+            key_str, confidence = key_extractor(audio)
+
+            # key_str format: "C major", "C# major", etc.
+            key_notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+            if key_str:
+                key_name = key_str.split()[0]  # Extract note part
+                return key_notes.index(key_name) if key_name in key_notes else -1
+        except Exception:
+            pass
+
+        # Fallback to librosa
         import librosa
         import numpy as np
 
@@ -149,6 +167,80 @@ class MashupEngine:
         if diff > 6:
             diff -= 12
         return diff
+
+    def time_stretch_audio(self, input_path, output_path, tempo_ratio):
+        """Time-stretch audio by tempo ratio (> 1 = faster, < 1 = slower).
+        Uses librosa's phase vocoder for high-quality stretching.
+        Returns True if successful, False if failed."""
+        import librosa
+        import soundfile as sf
+        import numpy as np
+
+        try:
+            # Load audio
+            y, sr = librosa.load(input_path, sr=None, mono=False)
+
+            # Handle mono vs stereo
+            if len(y.shape) == 1:
+                # Mono audio
+                y_stretched = librosa.effects.time_stretch(y, rate=tempo_ratio)
+            else:
+                # Stereo - process each channel
+                y_stretched = np.zeros((y.shape[0], int(y.shape[1] / tempo_ratio)))
+                for ch in range(y.shape[0]):
+                    y_stretched[ch] = librosa.effects.time_stretch(y[ch], rate=tempo_ratio)
+
+            # Ensure output directory exists
+            import os
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+            # Write with proper parameters
+            sf.write(output_path, y_stretched.T if len(y_stretched.shape) > 1 else y_stretched, sr, subtype='PCM_16')
+
+            import logging
+            logging.info(f"✅ Time-stretched {input_path} → {output_path} by ratio {tempo_ratio}")
+            return True
+        except Exception as e:
+            import logging
+            logging.error(f"Time stretch failed for {input_path}: {e}", exc_info=True)
+            return False
+
+    def pitch_shift_audio(self, input_path, output_path, semitones):
+        """Pitch-shift audio by N semitones using librosa.
+        Positive semitones = pitch up, negative = pitch down.
+        Returns True if successful, False if failed."""
+        import librosa
+        import soundfile as sf
+        import numpy as np
+
+        try:
+            # Load audio
+            y, sr = librosa.load(input_path, sr=None, mono=False)
+
+            # Handle mono vs stereo
+            if len(y.shape) == 1:
+                # Mono audio
+                y_shifted = librosa.effects.pitch_shift(y, sr=sr, n_steps=semitones)
+            else:
+                # Stereo - process each channel
+                y_shifted = np.zeros_like(y)
+                for ch in range(y.shape[0]):
+                    y_shifted[ch] = librosa.effects.pitch_shift(y[ch], sr=sr, n_steps=semitones)
+
+            # Ensure output directory exists
+            import os
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+            # Write with proper parameters
+            sf.write(output_path, y_shifted.T if len(y_shifted.shape) > 1 else y_shifted, sr, subtype='PCM_16')
+
+            import logging
+            logging.info(f"✅ Pitch-shifted {input_path} → {output_path} by {semitones} semitones")
+            return True
+        except Exception as e:
+            import logging
+            logging.error(f"Pitch shift failed for {input_path}: {e}", exc_info=True)
+            return False
 
     @staticmethod
     def _key_to_note(key):

@@ -21,24 +21,38 @@
 
 /* Select Dropdown */
 select {
-  background-color: #1a1a2e !important;
+  background-color: #0f0f1e !important;
   color: #fff !important;
-  border: 1px solid #6366f1 !important;
-  padding: 6px 8px !important;
-  border-radius: 4px !important;
-  font-size: 12px !important;
+  border: 2px solid #6366f1 !important;
+  padding: 8px 10px !important;
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
   cursor: pointer !important;
   appearance: none !important;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(99, 102, 241)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgb(167, 139, 250)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
   background-repeat: no-repeat !important;
-  background-position: right 8px center !important;
-  background-size: 16px !important;
-  padding-right: 32px !important;
+  background-position: right 10px center !important;
+  background-size: 18px !important;
+  padding-right: 36px !important;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.2) !important;
+}
+
+select:hover {
+  border-color: #a78bfa !important;
+  box-shadow: 0 0 15px rgba(167, 139, 250, 0.3) !important;
+}
+
+select:focus {
+  outline: none !important;
+  border-color: #c4b5fd !important;
+  box-shadow: 0 0 20px rgba(196, 181, 253, 0.4) !important;
 }
 
 select option {
   background-color: #1a1a2e !important;
   color: #fff !important;
+  padding: 8px !important;
 }
 
 /* Stem Loader */

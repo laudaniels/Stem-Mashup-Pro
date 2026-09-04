@@ -3,7 +3,9 @@ torchaudio
 demucs
 numpy<2
 librosa
+essentia
 gradio
 flask
 flask-cors
 scipy
+soundfile

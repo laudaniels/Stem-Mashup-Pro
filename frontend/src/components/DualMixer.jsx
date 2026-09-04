@@ -14,6 +14,11 @@ export default function DualMixer() {
   const [overrideBpm, setOverrideBpm] = useState([null, null]);
   const [overrideKey, setOverrideKey] = useState([null, null]);
   const [targetKey, setTargetKey] = useState(null);
+  const [transposedStems, setTransposedStems] = useState([null, null]);
+  const [transposingStatus, setTransposingStatus] = useState([null, null]);
+  const [targetBpm, setTargetBpm] = useState(null);
+  const [beatmatchedStems, setBeatmatchedStems] = useState([null, null]);
+  const [beatmatchStatus, setBeatmatchStatus] = useState([null, null]);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioStats, setAudioStats] = useState({ file_count: 0, total_size_formatted: '0 MB' });
@@ -87,7 +92,7 @@ export default function DualMixer() {
 
       setMetadata(prevMetadata => {
         const newMetadata = [...prevMetadata];
-        newMetadata[slot] = data;
+        newMetadata[slot] = { ...data, timestamp: data.timestamp || Date.now().toString() };
         return newMetadata;
       });
 
@@ -200,13 +205,13 @@ export default function DualMixer() {
         setDuration(dur);
 
         if (ct >= dur - 0.1) {
-          setPlaying(false);
+          // Auto-loop: restart playback
           setCurrentTime(0);
           [0, 1].forEach(slot => {
             ['vocals', 'drums', 'bass', 'other'].forEach(stem => {
               if (audioRefsRef.current[slot][stem]?.current) {
-                audioRefsRef.current[slot][stem].current.pause();
                 audioRefsRef.current[slot][stem].current.currentTime = 0;
+                audioRefsRef.current[slot][stem].current.play().catch(() => {});
               }
             });
           });
@@ -224,6 +229,37 @@ export default function DualMixer() {
   };
 
   const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+  // Get recommended target key (best compromise between both songs)
+  const getRecommendedKey = () => {
+    const key0 = getEffectiveKey(0);
+    const key1 = getEffectiveKey(1);
+
+    if (!key0 || !key1 || !stems[0] || !stems[1]) return null;
+
+    const keyToIndex = {};
+    KEYS.forEach((k, i) => keyToIndex[k] = i);
+
+    const idx0 = keyToIndex[key0];
+    const idx1 = keyToIndex[key1];
+
+    let bestKey = null;
+    let bestScore = Infinity;
+
+    // Find key that minimizes total transposition needed
+    KEYS.forEach((testKey, testIdx) => {
+      const shift0 = Math.abs(getSemitoneShift(key0, testKey));
+      const shift1 = Math.abs(getSemitoneShift(key1, testKey));
+      const score = shift0 + shift1;
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestKey = testKey;
+      }
+    });
+
+    return bestKey;
+  };
 
   const getEffectiveBpm = (slot) => overrideBpm[slot] !== null ? overrideBpm[slot] : metadata[slot]?.bpm;
   const getEffectiveKey = (slot) => overrideKey[slot] !== null ? overrideKey[slot] : metadata[slot]?.key;
@@ -249,6 +285,134 @@ export default function DualMixer() {
     const newOverride = [...overrideKey];
     newOverride[slot] = value || null;
     setOverrideKey(newOverride);
+  };
+
+  // Combined processing for beatmatch + transpose
+  const processStems = async (slot, newTargetBpm, newTargetKey) => {
+    // Pause playback during processing
+    if (playing) {
+      togglePlayback();
+    }
+
+    if (!stems[slot] || !metadata[slot]) return;
+
+    const sourceBpm = getEffectiveBpm(slot);
+    const sourceKey = getEffectiveKey(slot);
+
+    // Determine if processing needed
+    const needsBeatmatch = newTargetBpm && sourceBpm && sourceBpm !== newTargetBpm;
+    const needsTranspose = newTargetKey && sourceKey && sourceKey !== newTargetKey;
+
+    if (!needsBeatmatch && !needsTranspose) return;
+
+    setTransposingStatus(prev => {
+      const n = [...prev];
+      n[slot] = 'processing';
+      return n;
+    });
+    setBeatmatchStatus(prev => {
+      const n = [...prev];
+      n[slot] = 'processing';
+      return n;
+    });
+
+    try {
+      const response = await fetch('/api/process-stems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_bpm: needsBeatmatch ? sourceBpm : null,
+          target_bpm: needsBeatmatch ? newTargetBpm : null,
+          source_key: needsTranspose ? sourceKey : null,
+          target_key: needsTranspose ? newTargetKey : null,
+          timestamp: metadata[slot].timestamp
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.processed_stems) {
+        // Update audio refs to use processed stems
+        Object.entries(data.processed_stems).forEach(([stemName, url]) => {
+          if (audioRefsRef.current[slot][stemName]?.current) {
+            audioRefsRef.current[slot][stemName].current.src = url;
+            audioRefsRef.current[slot][stemName].current.load();
+          }
+        });
+
+        setTransposedStems(prev => {
+          const n = [...prev];
+          n[slot] = data.processed_stems;
+          return n;
+        });
+        setBeatmatchedStems(prev => {
+          const n = [...prev];
+          n[slot] = data.processed_stems;
+          return n;
+        });
+
+        // Update audio refs only after small delay to ensure files are written
+        setTimeout(() => {
+          Object.entries(data.processed_stems).forEach(([stemName, url]) => {
+            if (audioRefsRef.current[slot][stemName]?.current) {
+              audioRefsRef.current[slot][stemName].current.src = url;
+              audioRefsRef.current[slot][stemName].current.load();
+            }
+          });
+        }, 500);
+
+        setTransposingStatus(prev => {
+          const n = [...prev];
+          n[slot] = 'done';
+          return n;
+        });
+        setBeatmatchStatus(prev => {
+          const n = [...prev];
+          n[slot] = 'done';
+          return n;
+        });
+
+        console.log(`✅ Song ${slot + 1} processed successfully`);
+      } else {
+        throw new Error(data.error || 'Processing failed');
+      }
+    } catch (err) {
+      console.error(`Processing error (Song ${slot + 1}):`, err);
+      setTransposingStatus(prev => {
+        const n = [...prev];
+        n[slot] = 'error';
+        return n;
+      });
+      setBeatmatchStatus(prev => {
+        const n = [...prev];
+        n[slot] = 'error';
+        return n;
+      });
+    }
+  };
+
+  // Handle target key change
+  const handleTargetKeyChange = async (newTargetKey) => {
+    setTargetKey(newTargetKey);
+
+    // Process all loaded songs
+    for (let slot = 0; slot < 2; slot++) {
+      if (stems[slot]) {
+        await processStems(slot, targetBpm, newTargetKey);
+      }
+    }
+  };
+
+  // Handle target BPM change with combined processing
+  const handleTargetBpmChange = async (newTargetBpm) => {
+    setTargetBpm(newTargetBpm);
+
+    // Process all loaded songs
+    for (let slot = 0; slot < 2; slot++) {
+      if (stems[slot]) {
+        await processStems(slot, newTargetBpm, targetKey);
+      }
+    }
   };
 
   // Cleanup all audio files
@@ -515,7 +679,7 @@ export default function DualMixer() {
           </div>
         ) : null}
 
-        {/* Key Transposition */}
+        {/* Beatmatching */}
         {stems[0] || stems[1] ? (
           <div style={{
             background: 'rgba(99, 102, 241, 0.05)',
@@ -525,12 +689,95 @@ export default function DualMixer() {
             marginTop: '20px'
           }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: 'bold', color: '#ccc', marginBottom: '10px' }}>
-              🎼 Target Key (for transposition)
+              ⏱️ Target BPM (for beatmatching)
             </label>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+              <input
+                type="number"
+                value={targetBpm || ''}
+                onChange={(e) => handleTargetBpmChange(e.target.value ? parseFloat(e.target.value) : null)}
+                placeholder="Leave empty to align Song 2 to Song 1"
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  background: 'rgba(99, 102, 241, 0.2)',
+                  border: '1px solid #6366f1',
+                  color: '#fff',
+                  borderRadius: '6px',
+                  fontSize: '14px'
+                }}
+              />
+            </div>
+            <p style={{ margin: '0 0 10px 0', color: '#999', fontSize: '12px' }}>
+              💡 {targetBpm ? `Songs will be aligned to ${targetBpm} BPM` : 'Song 2 will align to Song 1 when target is set'}
+            </p>
+
+            {/* Beatmatch Status */}
+            {(targetBpm || (stems[0] && stems[1])) && (beatmatchStatus[0] || beatmatchStatus[1]) && (
+              <div style={{
+                background: 'rgba(139, 92, 246, 0.1)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                padding: '12px',
+                borderRadius: '8px',
+                fontSize: '12px'
+              }}>
+                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                  {[0, 1].map(slot => {
+                    if (!stems[slot] || !beatmatchStatus[slot]) return null;
+                    const status = beatmatchStatus[slot];
+                    const statusEmoji = status === 'beatmatching' ? '⏳' : status === 'done' ? '✅' : '❌';
+                    const sourceBpm = getEffectiveBpm(slot);
+                    const targetBpmForSlot = targetBpm || (slot === 1 ? getEffectiveBpm(0) : null);
+
+                    return (
+                      <div key={slot} style={{ color: '#aaa' }}>
+                        <strong style={{ color: '#8b5cf6' }}>{metadata[slot]?.filename?.replace(/\.[^/.]+$/, '')}</strong>
+                        <br />
+                        {sourceBpm} → {targetBpmForSlot} BPM <span style={{ marginLeft: '8px' }}>{statusEmoji} {status === 'beatmatching' ? 'Beatmatching...' : status === 'done' ? 'Ready' : 'Failed'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {/* Key Transposition */}
+        {stems[0] || stems[1] ? (
+          <div style={{
+            background: 'rgba(99, 102, 241, 0.05)',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            padding: '20px',
+            borderRadius: '12px',
+            marginTop: '20px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#ccc' }}>
+                🎼 Target Key (for transposition)
+              </label>
+              {stems[0] && stems[1] && (
+                <button
+                  onClick={() => handleTargetKeyChange(getRecommendedKey())}
+                  style={{
+                    background: 'transparent',
+                    color: '#a78bfa',
+                    border: '1px solid #8b5cf6',
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  💡 Recommend: {getRecommendedKey()}
+                </button>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
               <select
                 value={targetKey || ''}
-                onChange={(e) => setTargetKey(e.target.value || null)}
+                onChange={(e) => handleTargetKeyChange(e.target.value || null)}
                 style={{
                   flex: 1,
                   padding: '8px',
@@ -563,22 +810,156 @@ export default function DualMixer() {
                     const semitones = getSemitoneShift(sourceKey, targetKey);
                     const direction = semitones > 0 ? '↑' : semitones < 0 ? '↓' : '=';
                     const absSteps = Math.abs(semitones);
+                    const status = transposingStatus[slot];
+                    const statusEmoji = status === 'processing' ? '⏳' : status === 'transposing' ? '⏳' : status === 'done' ? '✅' : status === 'error' ? '❌' : '';
+                    const statusText = status === 'processing' ? 'Processing...' : status === 'transposing' ? 'Transposing...' : status === 'done' ? 'Ready' : 'Failed';
+
                     return (
                       <div key={slot} style={{ color: '#aaa' }}>
                         <strong style={{ color: '#8b5cf6' }}>{metadata[slot]?.filename?.replace(/\.[^/.]+$/, '')}</strong>
                         <br />
                         {sourceKey} → {targetKey} <span style={{ color: '#a78bfa', fontSize: '16px' }}>{direction}</span> {absSteps} semitone{absSteps !== 1 ? 's' : ''}
+                        {statusEmoji && <span style={{ marginLeft: '8px' }}>{statusEmoji} {statusText}</span>}
                       </div>
                     );
                   })}
                 </div>
                 <p style={{ margin: '10px 0 0 0', color: '#999', fontSize: '12px' }}>
-                  ⚠️ Note: Transposition requires pitch-shifting. This is a preview - actual audio processing coming soon.
+                  🎵 Pitch-shifting in progress - stems will be transposed and ready for playback
                 </p>
               </div>
             )}
           </div>
         ) : null}
+
+        {/* Downloads */}
+        {(stems[0] || stems[1]) && (
+          <div style={{
+            background: 'rgba(99, 102, 241, 0.05)',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            padding: '20px',
+            borderRadius: '12px',
+            marginTop: '20px'
+          }}>
+            <h4 style={{ margin: '0 0 15px 0', color: '#6366f1' }}>📥 Downloads</h4>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              {/* Download Original Stems */}
+              <button
+                onClick={async () => {
+                  const timestamps = metadata.map(m => m?.timestamp).filter(Boolean);
+                  if (!timestamps.length) {
+                    alert('No stems to download');
+                    return;
+                  }
+                  const res = await fetch('/api/download-stems-zip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      timestamps,
+                      include_original: true,
+                      include_processed: false
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.file) {
+                    window.location.href = data.file;
+                  }
+                }}
+                style={{
+                  background: 'rgba(99, 102, 241, 0.2)',
+                  color: '#a78bfa',
+                  border: '1px solid #6366f1',
+                  padding: '10px 16px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}
+              >
+                📦 Original Stems
+              </button>
+
+              {/* Download Processed Stems */}
+              {(transposedStems[0] || transposedStems[1] || beatmatchedStems[0] || beatmatchedStems[1]) && (
+                <button
+                  onClick={async () => {
+                    const timestamps = metadata.map(m => m?.timestamp).filter(Boolean);
+                    if (!timestamps.length) {
+                      alert('No stems to download');
+                      return;
+                    }
+                    const res = await fetch('/api/download-stems-zip', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        timestamps,
+                        include_original: false,
+                        include_processed: true
+                      })
+                    });
+                    const data = await res.json();
+                    if (data.file) {
+                      window.location.href = data.file;
+                    }
+                  }}
+                  style={{
+                    background: 'rgba(139, 92, 246, 0.2)',
+                    color: '#c4b5fd',
+                    border: '1px solid #8b5cf6',
+                    padding: '10px 16px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  📦 Processed Stems
+                </button>
+              )}
+
+              {/* Download Final Mix */}
+              <button
+                onClick={async () => {
+                  const timestamps = metadata.map(m => m?.timestamp).filter(Boolean);
+                  if (!timestamps.length) {
+                    alert('No stems to mix');
+                    return;
+                  }
+                  const res = await fetch('/api/render-final-mix', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      timestamps,
+                      volumes,
+                      crossfader
+                    })
+                  });
+                  const data = await res.json();
+                  if (data.file) {
+                    window.location.href = data.file;
+                  } else {
+                    alert('Render failed: ' + data.error);
+                  }
+                }}
+                style={{
+                  background: 'rgba(34, 197, 94, 0.2)',
+                  color: '#86efac',
+                  border: '1px solid #22c55e',
+                  padding: '10px 16px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}
+              >
+                🎵 Final Mix (WAV)
+              </button>
+            </div>
+            <p style={{ margin: '12px 0 0 0', color: '#999', fontSize: '12px' }}>
+              💡 Downloads include current volume settings and processing (beatmatch, transpose)
+            </p>
+          </div>
+        )}
 
         {/* Audio Stats & Cleanup */}
         <div style={{
