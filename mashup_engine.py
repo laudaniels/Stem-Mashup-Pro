@@ -169,79 +169,84 @@ class MashupEngine:
         return diff
 
     def time_stretch_audio(self, input_path, output_path, tempo_ratio):
-        """Time-stretch audio by tempo ratio (> 1 = faster, < 1 = slower).
-        Uses librosa's phase vocoder for high-quality stretching.
+        """Time-stretch audio using FFmpeg atempo filter (faster than librosa).
         Returns True if successful, False if failed."""
-        import librosa
-        import soundfile as sf
-        import numpy as np
         import logging
         import os
+        import subprocess
 
         try:
-            # Load audio (librosa returns mono by default, mono=False for stereo)
-            y, sr = librosa.load(input_path, sr=None, mono=False)
-            logging.info(f"Loaded audio shape: {y.shape}, sr={sr}")
-
-            # Handle mono vs stereo
-            if len(y.shape) == 1:
-                # Mono audio: shape (samples,)
-                y_stretched = librosa.effects.time_stretch(y, rate=tempo_ratio)
-            else:
-                # Stereo: shape (channels, samples)
-                channels = y.shape[0]
-                y_stretched = np.zeros((channels, int(y.shape[1] / tempo_ratio)))
-                for ch in range(channels):
-                    y_stretched[ch] = librosa.effects.time_stretch(y[ch], rate=tempo_ratio)
-                # Transpose to (samples, channels) for soundfile
-                y_stretched = y_stretched.T
+            logging.info(f"Time-stretching {input_path} by ratio {tempo_ratio}")
 
             # Ensure output directory exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            # Write audio file
-            sf.write(output_path, y_stretched, sr, subtype='PCM_16')
-            logging.info(f"✅ Time-stretched {input_path} → {output_path} by ratio {tempo_ratio}")
-            return True
+            # Use FFmpeg atempo filter (much faster than librosa)
+            # atempo only handles 0.5-2.0, so chain multiple if needed
+            atempo_filters = []
+            remaining = tempo_ratio
+            while remaining < 0.5 or remaining > 2.0:
+                step = 2.0 if remaining > 2.0 else 0.5
+                atempo_filters.append(f"atempo={step:.2f}")
+                remaining /= step
+            atempo_filters.append(f"atempo={remaining:.2f}")
+            atempo_chain = ",".join(atempo_filters)
+
+            cmd = [
+                "ffmpeg", "-i", str(input_path), "-af", atempo_chain,
+                "-y", "-q:a", "9", str(output_path)
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                logging.info(f"✅ Time-stretched {input_path} → {output_path} by ratio {tempo_ratio}")
+                return True
+            else:
+                logging.error(f"FFmpeg atempo failed: {result.stderr}")
+                return False
+
+        except subprocess.TimeoutExpired:
+            logging.error(f"Time stretch timeout for {input_path}")
+            return False
         except Exception as e:
             logging.error(f"Time stretch failed for {input_path}: {e}", exc_info=True)
             return False
 
     def pitch_shift_audio(self, input_path, output_path, semitones):
-        """Pitch-shift audio by N semitones using librosa.
+        """Pitch-shift audio using FFmpeg asetrate filter (faster than librosa).
         Positive semitones = pitch up, negative = pitch down.
         Returns True if successful, False if failed."""
-        import librosa
-        import soundfile as sf
-        import numpy as np
         import logging
         import os
+        import subprocess
 
         try:
-            # Load audio (librosa returns mono by default, mono=False for stereo)
-            y, sr = librosa.load(input_path, sr=None, mono=False)
-            logging.info(f"Loaded audio shape: {y.shape}, sr={sr}")
-
-            # Handle mono vs stereo
-            if len(y.shape) == 1:
-                # Mono audio: shape (samples,)
-                y_shifted = librosa.effects.pitch_shift(y, sr=sr, n_steps=semitones)
-            else:
-                # Stereo: shape (channels, samples)
-                channels = y.shape[0]
-                y_shifted = np.zeros_like(y)
-                for ch in range(channels):
-                    y_shifted[ch] = librosa.effects.pitch_shift(y[ch], sr=sr, n_steps=semitones)
-                # Transpose to (samples, channels) for soundfile
-                y_shifted = y_shifted.T
+            logging.info(f"Pitch-shifting {input_path} by {semitones} semitones")
 
             # Ensure output directory exists
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-            # Write audio file
-            sf.write(output_path, y_shifted, sr, subtype='PCM_16')
-            logging.info(f"✅ Pitch-shifted {input_path} → {output_path} by {semitones} semitones")
-            return True
+            # Use FFmpeg asetrate filter (much faster than librosa pitch_shift)
+            # pitch shift: rate = 2^(semitones/12)
+            pitch_ratio = 2 ** (semitones / 12.0)
+
+            cmd = [
+                "ffmpeg", "-i", str(input_path),
+                "-af", f"asetrate=44100*{pitch_ratio},aresample=44100",
+                "-y", "-q:a", "9", str(output_path)
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                logging.info(f"✅ Pitch-shifted {input_path} → {output_path} by {semitones} semitones (ratio {pitch_ratio:.4f})")
+                return True
+            else:
+                logging.error(f"FFmpeg pitch shift failed: {result.stderr}")
+                return False
+
+        except subprocess.TimeoutExpired:
+            logging.error(f"Pitch shift timeout for {input_path}")
+            return False
         except Exception as e:
             logging.error(f"Pitch shift failed for {input_path}: {e}", exc_info=True)
             return False
